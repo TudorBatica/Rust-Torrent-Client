@@ -1,156 +1,105 @@
-use std::collections::HashMap;
-use std::ffi::c_ushort;
-use std::fs::File;
-use std::hash::{Hash, Hasher};
-use std::io::{BufReader, Bytes, Read};
+mod bencode;
+mod file_reader;
+mod metadata;
 
-#[derive(Debug)]
-enum TorrentNode {
-    Int(u32),
-    Str(String),
-    List(Vec<TorrentNode>),
-    Dict(HashMap<TorrentNode, TorrentNode>),
-}
+use std::fs::{File};
+use std::io::{Read, Seek, SeekFrom};
+use sha1::{Digest, Sha1};
 
+use bencode::BencodeElement;
+use file_reader::FileReader;
+use metadata::{TorrentMeta, Info};
 
-impl PartialEq for TorrentNode {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (TorrentNode::Int(i1), TorrentNode::Int(i2)) => i1 == i2,
-            (TorrentNode::Str(s1), TorrentNode::Str(s2)) => s1 == s2,
-            (TorrentNode::List(l1), TorrentNode::List(l2)) => l1 == l2,
-            (TorrentNode::Dict(d1), TorrentNode::Dict(d2)) => d1 == d2,
-            _ => false,
-        }
+pub fn parse(file_path: &str) -> TorrentMeta {
+    let file = File::open(file_path).expect("Could not open file");
+    let mut reader = FileReader::new(file);
+    if reader.next().expect("") != b'd' {
+        panic!("Not a valid .torrent file, it is not a bencoded dict");
     }
+
+    let (mut torrent_meta, info_dict_start_idx, info_dict_end_idx) = parse_metadata(reader);
+    let mut file = File::open(file_path).expect("could not reopen file");
+    let info_hash = compute_info_hash(file, info_dict_start_idx, info_dict_end_idx);
+    torrent_meta.info_hash = info_hash;
+
+    return torrent_meta;
 }
 
-impl Eq for TorrentNode {}
-
-impl Hash for TorrentNode {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        match self {
-            TorrentNode::Int(i) => {
-                i.hash(state);
-            }
-            TorrentNode::Str(s) => {
-                s.hash(state);
-            }
-            TorrentNode::List(l) => {
-                l.len().hash(state);
-                for item in l {
-                    item.hash(state);
-                }
-            }
-            TorrentNode::Dict(d) => {
-                d.len().hash(state);
-                for (k, v) in d {
-                    k.hash(state);
-                    v.hash(state);
-                }
-            }
-        }
-    }
-}
-
-pub fn parse(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let file = File::open(file_path)?;
-    let mut bytes = BufReader::new(file).bytes();
+fn parse_metadata(mut reader: FileReader) -> (TorrentMeta, u64, u64) {
+    let mut torrent_meta = TorrentMeta::default();
+    let mut info_dict_start_index: u64 = Default::default();
+    let mut info_dict_end_index: u64 = Default::default();
 
     loop {
-        match bytes.next() {
+        match reader.next() {
             None => { break; }
             Some(b) => {
-                let node = parse_next_node(b?, &mut bytes);
-                println!("{:?}", node);
+                if b == b'e' {
+                    break;
+                }
+                let key = bencode::decode_next_element(b, &mut reader);
+                let key: String = match key {
+                    BencodeElement::Str(str) => { str }
+                    _ => { panic!("Not a valid .torrent file, all top-lvl dict keys should be strings") }
+                };
+
+                if key == "info" {
+                    info_dict_start_index = reader.bytes_read;
+                    torrent_meta.info = parse_info_dict(&mut reader);
+                    info_dict_end_index = reader.bytes_read;
+                } else {
+                    let value = bencode::decode_next_element(reader.next().expect(""), &mut reader);
+                    metadata::map_metadata_field(key, value, &mut torrent_meta);
+                }
             }
         }
     }
 
-    return Ok(());
+    return (torrent_meta, info_dict_start_index, info_dict_end_index);
 }
 
-fn parse_next_node(start_byte: u8, bytes: &mut Bytes<BufReader<File>>) -> TorrentNode {
-    let start_char = start_byte as char;
-
-    return if start_char == 'd' {
-        parse_dict(bytes)
-    } else if start_char == 'l' {
-        parse_list(bytes)
-    } else if start_char == 'i' {
-        parse_int(bytes)
-    } else {
-        parse_str(start_char, bytes)
-    };
-}
-
-fn parse_int(bytes: &mut Bytes<BufReader<File>>) -> TorrentNode {
-    let mut num: u32 = 0;
-    loop {
-        let byte = bytes.next().expect("Should have a byte").expect("No err expected");
-
-        if byte == b'e' {
-            break;
-        }
-
-        num = num * 10 + (byte as char).to_digit(10).expect("");
+fn parse_info_dict(reader: &mut FileReader) -> Info {
+    let first_byte = reader.next().unwrap();
+    if first_byte != b'd' {
+        panic!("Invalid .torrent file, Info field is not a dictionary");
     }
-    return TorrentNode::Int(num);
-}
-
-fn parse_str(start: char, bytes: &mut Bytes<BufReader<File>>) -> TorrentNode {
-    let mut str_len = start.to_digit(10).expect("Should have had a digit");
-    loop {
-        let byte = bytes.next().expect("Should have a byte").expect("No err expected");
-
-        if byte == b':' {
-            break;
-        }
-
-        str_len = str_len * 10 + (byte as char).to_digit(10).expect("");
-    }
-
-    let mut str = String::new();
-    while str_len > 0 {
-        let char = bytes.next().expect("Should have a byte").expect("No err expected");
-        str.push(char as char);
-        str_len -= 1;
-    }
-
-    return TorrentNode::Str(str);
-}
-
-fn parse_list(bytes: &mut Bytes<BufReader<File>>) -> TorrentNode {
-    let mut list_elements: Vec<TorrentNode> = Vec::new();
+    let mut info = Info::default();
 
     loop {
-        let next_byte = bytes.next().expect("Should have a byte").expect("No err expected");
+        let next_byte = reader.next().expect("");
         if next_byte == b'e' {
             break;
         }
-        list_elements.push(parse_next_node(next_byte, bytes));
+        let key = match bencode::decode_next_element(next_byte, reader) {
+            BencodeElement::Str(str) => { str }
+            _ => { panic!("Not a valid .torrent file. All info dict keys should be of type str") }
+        };
+        let value = bencode::decode_next_element(reader.next().expect(""), reader);
+        metadata::map_info_field(key, value, &mut info);
     }
 
-    return TorrentNode::List(list_elements);
+    return info;
 }
 
-fn parse_dict(bytes: &mut Bytes<BufReader<File>>) -> TorrentNode {
-    let mut map = HashMap::new();
+fn compute_info_hash(mut file: File, start_idx: u64, end_idx: u64) -> String {
+    file.seek(SeekFrom::Start(start_idx)).expect("could not seek");
+    let mut buffer = vec![0; (end_idx - start_idx) as usize];
+    file.read_exact(&mut buffer).expect("could not read :(");
 
-    loop {
-        let next_byte = bytes.next().expect("Should have a byte").expect("No err expected");
+    let mut hasher = Sha1::new();
+    hasher.update(buffer);
+    let info_hash = hasher.finalize();
 
-        if next_byte == b'e' {
-            break;
-        }
+    return info_hash.iter().map(|byte| format!("{:02x}", byte)).collect::<String>();
+}
 
-        let key = parse_next_node(next_byte, bytes);
-        let next_byte = bytes.next().expect("Should have a byte").expect("No err expected");
-        let value = parse_next_node(next_byte, bytes);
+#[cfg(test)]
+mod tests {
+    use crate::torrent_parser::parse;
 
-        map.insert(key, value);
+    #[test]
+    pub fn parse_torrent() {
+        let metadata = parse("test_resources/ubuntu-18.04.6-desktop-amd64.iso.torrent");
+        assert_eq!(metadata.info_hash, "bc26c6bc83d0ca1a7bf9875df1ffc3fed81ff555");
     }
-
-    return TorrentNode::Dict(map);
 }
-
