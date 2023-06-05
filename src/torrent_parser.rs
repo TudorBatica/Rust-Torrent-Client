@@ -18,7 +18,7 @@ pub fn parse(file_path: &str) -> TorrentMeta {
     }
 
     let (mut torrent_meta, info_dict_start_idx, info_dict_end_idx) = parse_metadata(reader);
-    let mut file = File::open(file_path).expect("could not reopen file");
+    let file = File::open(file_path).expect("could not reopen file");
     let info_hash = compute_info_hash(file, info_dict_start_idx, info_dict_end_idx);
     torrent_meta.info_hash = info_hash;
 
@@ -99,7 +99,14 @@ mod tests {
 
     #[test]
     pub fn parse_torrent() {
+        let expected_trackers = vec![
+            vec!["https://torrent.ubuntu.com/announce".to_string()],
+            vec!["https://ipv6.torrent.ubuntu.com/announce".to_string()]
+        ];
+
         let metadata = parse("test_resources/ubuntu-18.04.6-desktop-amd64.iso.torrent");
         assert_eq!(metadata.info_hash, "bc26c6bc83d0ca1a7bf9875df1ffc3fed81ff555");
+        assert_eq!(metadata.announce, "https://torrent.ubuntu.com/announce".to_string());
+        assert_eq!(metadata.announce_list, expected_trackers);
     }
 }

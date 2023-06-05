@@ -4,6 +4,7 @@ use crate::torrent_parser::bencode::BencodeElement;
 #[derive(Debug, Default)]
 pub struct TorrentMeta {
     pub announce: String,
+    pub announce_list: Vec<Vec<String>>,
     pub created_by: String,
     pub creation_date: u32,
     pub comment: String,
@@ -18,7 +19,7 @@ pub struct Info {
     pieces: String,
     name: String,
     length: Option<u64>,
-    files: Option<Vec<(String, u64)>>,
+    files: Vec<(String, u64)>,
 }
 
 pub fn map_info_field(key: String, value: BencodeElement, info: &mut Info) {
@@ -47,9 +48,6 @@ pub fn map_info_field(key: String, value: BencodeElement, info: &mut Info) {
             BencodeElement::List(list) => { list }
             _ => { panic!("Not a valid value for info.files field") }
         };
-
-        let mut files_vec: Vec<(String, u64)> = Vec::new();
-
         for dict in files_list {
             let dict = match dict {
                 BencodeElement::Dict(dict) => { dict }
@@ -78,7 +76,7 @@ pub fn map_info_field(key: String, value: BencodeElement, info: &mut Info) {
                         .for_each(|p|
                             match p {
                                 BencodeElement::Str(str) => { path = path.join(Path::new(&str)); }
-                                _ => { panic!("Invalud value for info.files.path") }
+                                _ => { panic!("Invalid value for info.files.path") }
                             }
                         );
                     match path.to_str() {
@@ -87,11 +85,8 @@ pub fn map_info_field(key: String, value: BencodeElement, info: &mut Info) {
                     }
                 }
             }
-
-            files_vec.push(file_path_and_size);
+            info.files.push(file_path_and_size);
         }
-
-        info.files = Some(files_vec);
     }
 }
 
@@ -102,6 +97,25 @@ pub fn map_metadata_field(key: String, value: BencodeElement, metadata: &mut Tor
             _ => { panic!("Not a valid value for announce field") }
         };
         metadata.announce = value;
+    } else if key == "announce-list" {
+        let tiers: Vec<Vec<BencodeElement>> = match value {
+            BencodeElement::List(value) => value,
+            _ => panic!("Not a valid value for announce-list field")
+        }.into_iter().filter_map(|trackers| match trackers {
+            BencodeElement::List(list) => Some(list),
+            _ => None
+        }).collect();
+
+        for tier in tiers {
+            let mut trackers = Vec::new();
+            for tracker in tier {
+                match tracker {
+                    BencodeElement::Str(tracker) => trackers.push(tracker),
+                    _ => {}
+                };
+            }
+            metadata.announce_list.push(trackers);
+        }
     } else if key == "created by" {
         let value = match value {
             BencodeElement::Str(value) => { value }
