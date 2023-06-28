@@ -10,7 +10,7 @@ pub struct TorrentMeta {
     pub comment: String,
     pub encoding: String,
     pub info: Info,
-    pub info_hash: String,
+    pub info_hash: Vec<u8>
 }
 
 #[derive(Debug, Default)]

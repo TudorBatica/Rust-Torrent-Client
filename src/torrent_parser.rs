@@ -8,7 +8,7 @@ use sha1::{Digest, Sha1};
 
 use bencode::BencodeElement;
 use file_reader::FileReader;
-use metadata::{TorrentMeta, Info};
+pub use metadata::{TorrentMeta, Info};
 
 pub fn parse(file_path: &str) -> TorrentMeta {
     let file = File::open(file_path).expect("Could not open file");
@@ -81,7 +81,7 @@ fn parse_info_dict(reader: &mut FileReader) -> Info {
     return info;
 }
 
-fn compute_info_hash(mut file: File, start_idx: u64, end_idx: u64) -> String {
+fn compute_info_hash(mut file: File, start_idx: u64, end_idx: u64) -> Vec<u8> {
     file.seek(SeekFrom::Start(start_idx)).expect("could not seek");
     let mut buffer = vec![0; (end_idx - start_idx) as usize];
     file.read_exact(&mut buffer).expect("could not read :(");
@@ -90,7 +90,7 @@ fn compute_info_hash(mut file: File, start_idx: u64, end_idx: u64) -> String {
     hasher.update(buffer);
     let info_hash = hasher.finalize();
 
-    return info_hash.iter().map(|byte| format!("{:02x}", byte)).collect::<String>();
+    return info_hash.into_iter().collect();
 }
 
 #[cfg(test)]
@@ -101,11 +101,12 @@ mod tests {
     pub fn parse_torrent() {
         let expected_trackers = vec![
             vec!["https://torrent.ubuntu.com/announce".to_string()],
-            vec!["https://ipv6.torrent.ubuntu.com/announce".to_string()]
+            vec!["https://ipv6.torrent.ubuntu.com/announce".to_string()],
         ];
 
         let metadata = parse("test_resources/ubuntu-18.04.6-desktop-amd64.iso.torrent");
-        assert_eq!(metadata.info_hash, "bc26c6bc83d0ca1a7bf9875df1ffc3fed81ff555");
+        assert_eq!(metadata.info_hash.iter().map(|byte| format!("{:02x}", byte)).collect::<String>(),
+                   "bc26c6bc83d0ca1a7bf9875df1ffc3fed81ff555");
         assert_eq!(metadata.announce, "https://torrent.ubuntu.com/announce".to_string());
         assert_eq!(metadata.announce_list, expected_trackers);
     }
