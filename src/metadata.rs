@@ -4,13 +4,10 @@ use serde_bytes::ByteBuf;
 use std::fs;
 use sha1::{Digest, Sha1};
 
-#[derive(Debug, Deserialize)]
-struct Node(String, i64);
-
 #[derive(Debug, Deserialize, Serialize)]
 struct File {
     path: Vec<String>,
-    length: i64,
+    length: u64,
     #[serde(default)]
     md5sum: Option<String>,
 }
@@ -20,11 +17,11 @@ struct Info {
     name: String,
     pieces: ByteBuf,
     #[serde(rename = "piece length")]
-    piece_length: i64,
+    piece_length: u64,
     #[serde(default)]
     md5sum: Option<String>,
     #[serde(default)]
-    length: Option<i64>,
+    length: Option<u64>,
     #[serde(default)]
     files: Option<Vec<File>>,
     #[serde(default)]
@@ -42,8 +39,6 @@ pub struct Torrent {
     #[serde(default)]
     pub announce: Option<String>,
     #[serde(default)]
-    nodes: Option<Vec<Node>>,
-    #[serde(default)]
     pub encoding: Option<String>,
     #[serde(default)]
     pub httpseeds: Option<Vec<String>>,
@@ -52,7 +47,7 @@ pub struct Torrent {
     pub announce_list: Option<Vec<Vec<String>>>,
     #[serde(default)]
     #[serde(rename = "creation date")]
-    pub creation_date: Option<i64>,
+    pub creation_date: Option<u64>,
     #[serde(rename = "comment")]
     pub comment: Option<String>,
     #[serde(default)]
