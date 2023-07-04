@@ -1,5 +1,4 @@
 use serde_derive::{Deserialize, Serialize};
-use serde_bencode::{de, ser};
 use serde_bytes::ByteBuf;
 use std::fs;
 use sha1::{Digest, Sha1};
@@ -37,7 +36,7 @@ struct Info {
 pub struct Torrent {
     info: Info,
     #[serde(default)]
-    pub announce: Option<String>,
+    pub announce: String,
     #[serde(default)]
     pub encoding: Option<String>,
     #[serde(default)]
@@ -59,9 +58,9 @@ pub struct Torrent {
 
 pub fn parse_torrent(file_path: &str) -> Result<Torrent, Box<dyn std::error::Error>> {
     let file = fs::read(file_path)?;
-    let mut torrent = de::from_bytes::<Torrent>(&file)?;
+    let mut torrent = serde_bencode::de::from_bytes::<Torrent>(&file)?;
     let mut hasher = Sha1::new();
-    hasher.update(ser::to_bytes(&torrent.info)?);
+    hasher.update(serde_bencode::ser::to_bytes(&torrent.info)?);
     torrent.info_hash = hasher.finalize().into_iter().collect();
     return Ok(torrent);
 }
@@ -82,7 +81,7 @@ mod tests {
         ).unwrap();
         assert_eq!(metadata.info_hash.iter().map(|byte| format!("{:02x}", byte)).collect::<String>(),
                    "bc26c6bc83d0ca1a7bf9875df1ffc3fed81ff555");
-        assert_eq!(metadata.announce, Some("https://torrent.ubuntu.com/announce".to_string()));
+        assert_eq!(metadata.announce, "https://torrent.ubuntu.com/announce");
         assert_eq!(metadata.announce_list, Some(expected_trackers));
     }
 }

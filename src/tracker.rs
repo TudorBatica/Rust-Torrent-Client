@@ -1,14 +1,48 @@
-use form_urlencoded::byte_serialize;
 use crate::config::Config;
-use reqwest::{Client, Url};
 use crate::metadata::Torrent;
+use form_urlencoded::byte_serialize;
+use serde::Deserialize;
+use serde_derive::Deserialize;
+use std::net::Ipv4Addr;
 
-pub async fn announce(torrent: &Torrent, peer_config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-    println!("{}", &torrent.info_hash.iter().map(|byte| format!("{:02x}", byte)).collect::<String>());
+#[derive(Debug, Deserialize)]
+pub struct Peer {
+    pub ip: Ipv4Addr,
+    pub port: u16,
+}
 
+#[derive(Debug, Deserialize)]
+pub struct TrackerResponse {
+    pub interval: u64,
+    #[serde(deserialize_with = "deserialize_peers")]
+    pub peers: Vec<Peer>,
+}
+
+fn deserialize_peers<'de, D>(deserializer: D) -> Result<Vec<Peer>, D::Error>
+    where D: serde::Deserializer<'de>,
+{
+    let bytes = serde_bytes::ByteBuf::deserialize(deserializer)?;
+    let mut iter = bytes.as_ref().chunks_exact(6);
+    let mut peers = Vec::new();
+    while let Some(chunk) = iter.next() {
+        let ip = Ipv4Addr::new(chunk[0], chunk[1], chunk[2], chunk[3]);
+        let port = u16::from_be_bytes([chunk[4], chunk[5]]);
+        peers.push(Peer { ip, port });
+    }
+
+    Ok(peers)
+}
+
+pub async fn announce(torrent: &Torrent, peer_config: &Config) -> Result<TrackerResponse, Box<dyn std::error::Error>> {
+    let url = create_url(torrent, peer_config);
+    let response = reqwest::get(url).await?.bytes().await?;
+    let response = serde_bencode::de::from_bytes::<TrackerResponse>(&*response)?;
+    return Ok(response);
+}
+
+fn create_url(torrent: &Torrent, peer_config: &Config) -> String {
     let port = peer_config.listening_port.to_string();
     let info_hash = byte_serialize(&torrent.info_hash).collect::<String>();
-
     let query_params = [
         ("info_hash", info_hash.as_ref()),
         ("peer_id", peer_config.peer_id.as_ref()),
@@ -18,7 +52,6 @@ pub async fn announce(torrent: &Torrent, peer_config: &Config) -> Result<(), Box
         ("downloaded", "0"),
         ("uploaded", "0"),
     ];
-
     let query_params = query_params.into_iter().enumerate()
         .map(|(param_idx, (param, value))| {
             if param_idx == 0 {
@@ -29,13 +62,5 @@ pub async fn announce(torrent: &Torrent, peer_config: &Config) -> Result<(), Box
         })
         .collect::<String>();
 
-    let url = format!("{}?{}", torrent.announce.as_ref().unwrap(), query_params);
-    println!("url is : {}", url);
-
-    let tracker_response = reqwest::get(url).await?;
-
-    println!("{:?}", tracker_response);
-    println!("text: {:?}", tracker_response.text().await?);
-
-    return Ok(());
+    return format!("{}?{}", torrent.announce, query_params);
 }
