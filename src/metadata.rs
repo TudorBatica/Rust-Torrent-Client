@@ -5,31 +5,24 @@ use sha1::{Digest, Sha1};
 
 #[derive(Debug, Deserialize, Serialize)]
 struct File {
-    path: Vec<String>,
     length: u64,
-    #[serde(default)]
-    md5sum: Option<String>,
+    path: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Info {
+    #[serde(default)]
+    files: Option<Vec<File>>,
+    #[serde(default)]
+    length: Option<u64>,
     name: String,
+    #[serde(default)]
+    path: Option<Vec<String>>,
     pieces: ByteBuf,
     #[serde(rename = "piece length")]
     piece_length: u64,
     #[serde(default)]
-    md5sum: Option<String>,
-    #[serde(default)]
-    length: Option<u64>,
-    #[serde(default)]
-    files: Option<Vec<File>>,
-    #[serde(default)]
     private: Option<u8>,
-    #[serde(default)]
-    path: Option<Vec<String>>,
-    #[serde(default)]
-    #[serde(rename = "root hash")]
-    root_hash: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -37,10 +30,6 @@ pub struct Torrent {
     info: Info,
     #[serde(default)]
     pub announce: String,
-    #[serde(default)]
-    pub encoding: Option<String>,
-    #[serde(default)]
-    pub httpseeds: Option<Vec<String>>,
     #[serde(default)]
     #[serde(rename = "announce-list")]
     pub announce_list: Option<Vec<Vec<String>>>,
@@ -52,6 +41,8 @@ pub struct Torrent {
     #[serde(default)]
     #[serde(rename = "created by")]
     pub created_by: Option<String>,
+    #[serde(default)]
+    pub encoding: Option<String>,
     #[serde(default)]
     pub info_hash: Vec<u8>,
 }
