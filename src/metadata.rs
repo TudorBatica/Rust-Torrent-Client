@@ -4,30 +4,30 @@ use std::fs;
 use sha1::{Digest, Sha1};
 
 #[derive(Debug, Deserialize, Serialize)]
-struct File {
+pub struct File {
     length: u64,
     path: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct Info {
+pub struct Info {
     #[serde(default)]
-    files: Option<Vec<File>>,
+    pub files: Option<Vec<File>>,
     #[serde(default)]
-    length: Option<u64>,
-    name: String,
+    pub length: Option<u64>,
+    pub name: String,
     #[serde(default)]
-    path: Option<Vec<String>>,
-    pieces: ByteBuf,
+    pub path: Option<Vec<String>>,
+    pub pieces: ByteBuf,
     #[serde(rename = "piece length")]
-    piece_length: u64,
+    pub piece_length: u64,
     #[serde(default)]
-    private: Option<u8>,
+    pub private: Option<u8>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Torrent {
-    info: Info,
+    pub info: Info,
     #[serde(default)]
     pub announce: String,
     #[serde(default)]
@@ -45,6 +45,12 @@ pub struct Torrent {
     pub encoding: Option<String>,
     #[serde(default)]
     pub info_hash: Vec<u8>,
+}
+
+impl Torrent {
+    pub fn get_pieces_hashes(&self) -> Vec<Vec<u8>> {
+        return self.info.pieces.as_ref().chunks(20).map(|array| array.to_owned()).collect();
+    }
 }
 
 pub fn parse_torrent(file_path: &str) -> Result<Torrent, Box<dyn std::error::Error>> {
@@ -66,13 +72,11 @@ mod tests {
             vec!["https://torrent.ubuntu.com/announce".to_string()],
             vec!["https://ipv6.torrent.ubuntu.com/announce".to_string()],
         ];
-
-        let metadata = parse_torrent(
-            "test_resources/ubuntu-18.04.6-desktop-amd64.iso.torrent"
-        ).unwrap();
+        let metadata = parse_torrent("test_resources/ubuntu-18.04.6-desktop-amd64.iso.torrent").unwrap();
         assert_eq!(metadata.info_hash.iter().map(|byte| format!("{:02x}", byte)).collect::<String>(),
                    "bc26c6bc83d0ca1a7bf9875df1ffc3fed81ff555");
         assert_eq!(metadata.announce, "https://torrent.ubuntu.com/announce");
         assert_eq!(metadata.announce_list, Some(expected_trackers));
+        assert_eq!(metadata.get_pieces_hashes().len(), 9591);
     }
 }

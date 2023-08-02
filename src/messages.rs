@@ -1,5 +1,7 @@
 const PROTOCOL: &'static str = "BitTorrent protocol";
 
+//todo: move into transfer directory
+
 pub struct Handshake {
     pub content: Vec<u8>,
 }
