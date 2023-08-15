@@ -5,8 +5,7 @@ use tokio::task::JoinHandle;
 use crate::config::Config;
 use crate::metadata::Torrent;
 use crate::tracker::TrackerResponse;
-use crate::transfer::{peer_transfer, state};
-use crate::transfer::peer_connection::{PeerConnection};
+use crate::transfer::{peer_connection, peer_transfer, state};
 use crate::transfer::state::{CoordinatorTransferState};
 
 pub async fn run(torrent: Torrent, tracker_response: TrackerResponse, client_config: &Config) {
@@ -22,17 +21,17 @@ pub async fn run(torrent: Torrent, tracker_response: TrackerResponse, client_con
     let p2p_transfer_tasks: Vec<JoinHandle<()>> = tracker_response.peers.into_iter().map(|peer| {
         let client_id = client_config.client_id.clone();
         let info_hash = torrent.info_hash.clone();
-        let peer_transfer_state = state::register_new_peer_transfer(&mut transfer_state);
+        let (peer_transfer_state, channel) = state::register_new_peer_transfer(&mut transfer_state);
 
         return tokio::spawn(async move {
-            let conn = match PeerConnection::start_connection(peer, info_hash, client_id).await {
+            let (read_conn, write_conn) = match peer_connection::connect(peer, info_hash, client_id).await {
                 Ok(conn) => conn,
                 Err(err) => {
                     println!("P2P transfer failed: {:?}", err);
                     return;
                 }
             };
-            match peer_transfer::run_transfer(peer_transfer_state, conn).await {
+            match peer_transfer::run_transfer(peer_transfer_state, read_conn, write_conn, channel.0, channel.1).await {
                 Ok(_) => { println!("P2P transfer finished successfully!"); }
                 Err(err) => { println!("P2P transfer failed: {:?}", err); }
             }

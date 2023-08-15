@@ -2,6 +2,7 @@ use rand::distributions::Alphanumeric;
 use rand::Rng;
 
 const CLIENT_ID_PREFIX: &str = "XX0001x";
+pub const BLOCK_SIZE_BYTES: usize = 16384;
 
 pub struct Config {
     pub listening_port: u16,
