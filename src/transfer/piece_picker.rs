@@ -176,17 +176,15 @@ mod tests {
         assert_eq!(pick_result.blocks[0].0, 0);
     }
 
+    #[test]
     fn test_pick_end_game_mode() {
-        let mut piece_picker = PiecePicker::init(3, 8192, 4096, 16);
-
-        let mut peer_bitfield = Bitfield::init(3);
+        let mut piece_picker = PiecePicker::init(1, 8, 8, 4);
+        let mut peer_bitfield = Bitfield::init(1);
         peer_bitfield.piece_acquired(0);
-        peer_bitfield.piece_acquired(1);
-        let pick_result = piece_picker.pick(&peer_bitfield, 2);
+        piece_picker.pick(&peer_bitfield, 2).unwrap();
+        let pick_result = piece_picker.pick(&peer_bitfield, 2).unwrap();
 
-        assert!(pick_result.is_some());
-        let pick_result = pick_result.unwrap();
+        assert_eq!(pick_result.end_game_mode_enabled, true);
         assert_eq!(pick_result.blocks.len(), 1);
-        assert!(pick_result.end_game_mode_enabled);
     }
 }
