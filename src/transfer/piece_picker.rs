@@ -93,6 +93,18 @@ impl PiecePicker {
         }
     }
 
+    pub fn remove_block(&mut self, piece_idx: usize, block_offset: usize, block_length: usize) {
+        if let Some(piece_state) = self.piece_download_state.get_mut(&piece_idx) {
+            piece_state.blocks_in_transfer.remove(&(block_offset, block_length));
+            if !piece_state.blocks_in_transfer.is_empty() || !piece_state.blocks_unrequested.is_empty() {
+                return;
+            }
+            if let Some(array_idx) = self.piece_lookup_table.get(&piece_idx) {
+                self.priority_sorted_pieces.remove(*array_idx);
+            }
+        }
+    }
+
     fn pick_blocks(&mut self, piece_idx: usize, num_of_blocks: usize) -> PickResult {
         let piece = self.piece_download_state.get_mut(&piece_idx).unwrap();
         let blocks: Vec<(usize, usize)> = piece.blocks_unrequested.drain().take(num_of_blocks).collect();
@@ -174,6 +186,33 @@ mod tests {
         assert_eq!(pick_result.end_game_mode_enabled, false);
         assert_eq!(pick_result.blocks.len(), 10);
         assert_eq!(pick_result.blocks[0].0, 0);
+    }
+
+    #[test]
+    fn test_availability_updates() {
+        let mut piece_picker = PiecePicker::init(4, 8, 8, 1);
+        piece_picker.increase_availability_for_piece(1);
+        piece_picker.increase_availability_for_piece(1);
+        piece_picker.increase_availability_for_piece(1);
+
+        piece_picker.increase_availability_for_piece(2);
+        piece_picker.increase_availability_for_piece(2);
+
+        piece_picker.increase_availability_for_piece(0);
+        piece_picker.increase_availability_for_piece(0);
+
+        piece_picker.increase_availability_for_piece(3);
+
+        assert_eq!(piece_picker.priority_sorted_pieces[0].0, 3);
+        assert_eq!(
+            piece_picker.priority_sorted_pieces[1].0 == 2 || piece_picker.priority_sorted_pieces[1].0 == 0,
+            true
+        );
+        assert_eq!(piece_picker.priority_sorted_pieces[3].0, 1);
+
+        piece_picker.decrease_availability_for_pieces(vec![0]);
+        piece_picker.decrease_availability_for_pieces(vec![0]);
+        assert_eq!(piece_picker.priority_sorted_pieces[0].0, 0);
     }
 
     #[test]
