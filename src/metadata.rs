@@ -45,12 +45,8 @@ pub struct Torrent {
     pub encoding: Option<String>,
     #[serde(default)]
     pub info_hash: Vec<u8>,
-}
-
-impl Torrent {
-    pub fn get_pieces_hashes(&self) -> Vec<Vec<u8>> {
-        return self.info.pieces.as_ref().chunks(20).map(|array| array.to_owned()).collect();
-    }
+    #[serde(skip)]
+    pub piece_hashes: Vec<Vec<u8>>,
 }
 
 pub fn parse_torrent(file_path: &str) -> Result<Torrent, Box<dyn std::error::Error>> {
@@ -59,6 +55,7 @@ pub fn parse_torrent(file_path: &str) -> Result<Torrent, Box<dyn std::error::Err
     let mut hasher = Sha1::new();
     hasher.update(serde_bencode::ser::to_bytes(&torrent.info)?);
     torrent.info_hash = hasher.finalize().into_iter().collect();
+    torrent.piece_hashes = torrent.info.pieces.as_ref().chunks(20).map(|array| array.to_owned()).collect();
     return Ok(torrent);
 }
 
@@ -67,7 +64,7 @@ mod tests {
     use crate::metadata::parse_torrent;
 
     #[test]
-    pub fn parse_test() {
+    pub fn test_torrent_parse() {
         let expected_trackers = vec![
             vec!["https://torrent.ubuntu.com/announce".to_string()],
             vec!["https://ipv6.torrent.ubuntu.com/announce".to_string()],
@@ -77,6 +74,6 @@ mod tests {
                    "bc26c6bc83d0ca1a7bf9875df1ffc3fed81ff555");
         assert_eq!(metadata.announce, "https://torrent.ubuntu.com/announce");
         assert_eq!(metadata.announce_list, Some(expected_trackers));
-        assert_eq!(metadata.get_pieces_hashes().len(), 9591);
+        assert_eq!(metadata.piece_hashes.len(), 9591);
     }
 }
