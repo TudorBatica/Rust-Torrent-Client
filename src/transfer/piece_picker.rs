@@ -93,16 +93,19 @@ impl PiecePicker {
         }
     }
 
-    pub fn remove_block(&mut self, piece_idx: usize, block_offset: usize, block_length: usize) {
+    // returns (block_removed, piece_removed)
+    pub fn remove_block(&mut self, piece_idx: usize, block_offset: usize, block_length: usize) -> (bool, bool) {
         if let Some(piece_state) = self.piece_download_state.get_mut(&piece_idx) {
             piece_state.blocks_in_transfer.remove(&(block_offset, block_length));
             if !piece_state.blocks_in_transfer.is_empty() || !piece_state.blocks_unrequested.is_empty() {
-                return;
+                return (true, false);
             }
             if let Some(array_idx) = self.piece_lookup_table.get(&piece_idx) {
                 self.priority_sorted_pieces.remove(*array_idx);
+                return (true, true);
             }
         }
+        return (false, false);
     }
 
     fn pick_blocks(&mut self, piece_idx: usize, num_of_blocks: usize) -> PickResult {
