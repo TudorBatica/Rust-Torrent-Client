@@ -1,8 +1,9 @@
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
+use crate::internal_events::{CoordinatorEvent, CoordinatorInput};
 use crate::transfer::peer_connection::{P2PConnError, PeerReadConn, PeerWriteConn};
 use crate::transfer::peer_message::Message;
-use crate::transfer::state::{Bitfield, InternalEvent, PeerTransferState};
+use crate::transfer::state::{Bitfield, PeerTransferState};
 
 const MAX_CONCURRENT_REQUESTS: usize = 10;
 
@@ -10,21 +11,23 @@ const MAX_CONCURRENT_REQUESTS: usize = 10;
 pub enum P2PTransferError {}
 
 enum InboundData {
-    CoordinatorEvent(InternalEvent),
+    CoordinatorEvent(CoordinatorEvent),
     PeerMessage(Message),
 }
 
 pub async fn run_transfer(mut state: PeerTransferState,
-                          read_conn: PeerReadConn, mut write_conn: PeerWriteConn,
-                          events_tx: Sender<InternalEvent>, events_rx: Receiver<InternalEvent>) -> Result<(), P2PTransferError> {
+                          read_conn: PeerReadConn,
+                          mut write_conn: PeerWriteConn,
+                          events_tx: Sender<CoordinatorInput>,
+                          events_rx: Receiver<CoordinatorEvent>) -> Result<(), P2PTransferError> {
     let (inbound_data_tx, mut inbound_data_rx) = mpsc::channel::<InboundData>(128);
     let _ = tokio::spawn(receive_peer_messages(read_conn, inbound_data_tx.clone()));
-    let _ = tokio::spawn(receive_events_from_coordinator(events_rx, inbound_data_tx));
+    let _ = tokio::spawn(receive_events_from_coordinator());
 
     while let Some(data) = inbound_data_rx.recv().await {
         match data {
-            InboundData::CoordinatorEvent(event) => handle_internal_event(event),
-            InboundData::PeerMessage(message) => handle_peer_messages(message, &mut state, &mut write_conn, &events_tx)
+            InboundData::CoordinatorEvent(event) => handle_internal_event(),
+            InboundData::PeerMessage(message) => handle_peer_messages(message, &mut state)
         };
     }
 
@@ -45,8 +48,7 @@ async fn receive_peer_messages(mut conn: PeerReadConn, tx: Sender<InboundData>) 
     }
 }
 
-fn handle_peer_messages(message: Message, state: &mut PeerTransferState,
-                        write_conn: &mut PeerWriteConn, events_tx: &Sender<InternalEvent>) {
+fn handle_peer_messages(message: Message, state: &mut PeerTransferState) {
     match message {
         Message::KeepAlive => {
             println!("Received KEEP ALIVE message");
@@ -131,7 +133,7 @@ async fn update_interested(state: &mut PeerTransferState, write_conn: &mut PeerW
 //         .is_some();
 // }
 
-async fn receive_events_from_coordinator(recv: Receiver<InternalEvent>, tx: Sender<InboundData>) {}
+async fn receive_events_from_coordinator() {}
 
-fn handle_internal_event(event: InternalEvent) {}
+fn handle_internal_event() {}
 

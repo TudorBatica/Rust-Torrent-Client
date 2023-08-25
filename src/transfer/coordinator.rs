@@ -8,7 +8,7 @@ use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
 use crate::{config, download_assembler};
 use crate::config::Config;
-use crate::core_models::BlockPosition;
+use crate::core_models::{BlockPosition, TorrentLayout};
 use crate::internal_events::{CoordinatorInput, DownloadAssemblerEvent};
 use crate::metadata::Torrent;
 use crate::tracker::TrackerResponse;
@@ -24,6 +24,16 @@ pub enum TransferError {
 pub async fn run(torrent: Torrent, tracker_response: TrackerResponse, client_config: &Config) -> Result<(), TransferError> {
     start_listener(client_config).await;
     //todo: compute torrent layout and send it to components which require it
+    let torrent_layout = TorrentLayout {
+        pieces: 0,
+        head_pieces_length: 0,
+        last_piece_length: 0,
+        usual_block_length: 0,
+        head_pieces_last_block_length: 0,
+        last_piece_last_block_length: 0,
+        blocks_in_head_pieces: 0,
+        blocks_in_last_piece: 0,
+    };
     let picker = init_piece_picker(&torrent);
     let mut transfer_state = CoordinatorTransferState::init(&torrent, picker);
 
@@ -31,7 +41,12 @@ pub async fn run(torrent: Torrent, tracker_response: TrackerResponse, client_con
     let (tx_to_assembler, rx_assembler) = mpsc::channel::<(BlockPosition, Vec<u8>)>(128);
 
     //todo: create cancellation tokens
-    let assembler_task = spawn_download_assembler_task(&torrent, &transfer_state, rx_assembler).await?;
+    let assembler_task = spawn_download_assembler_task(
+        &torrent,
+        torrent_layout.clone(),
+        &transfer_state,
+        rx_assembler,
+    ).await?;
 
     // spawn choke/unchoke scheduler
 
@@ -80,6 +95,7 @@ fn init_piece_picker(torrent: &Torrent) -> Arc<Mutex<PiecePicker>> {
 }
 
 async fn spawn_download_assembler_task(torrent: &Torrent,
+                                       torrent_layout: TorrentLayout,
                                        transfer_state: &CoordinatorTransferState,
                                        rx: Receiver<(BlockPosition, Vec<u8>)>) -> Result<JoinHandle<()>, TransferError> {
     let file = OpenOptions::new()
@@ -98,9 +114,10 @@ async fn spawn_download_assembler_task(torrent: &Torrent,
         download_assembler::run(
             transfer_state.piece_picker.clone(),
             torrent.piece_hashes.clone(),
+            torrent_layout,
             file,
             rx,
-            transfer_state.tx_to_coordinator.clone())
+            transfer_state.tx_to_coordinator.clone()),
     );
 
     return Ok(handle);
