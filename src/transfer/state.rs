@@ -1,65 +1,71 @@
-use std::collections::{HashSet};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::sync::mpsc::{Receiver, Sender};
+use crate::internal_events::{CoordinatorEvent, CoordinatorInput};
 use crate::metadata::Torrent;
 use crate::transfer::piece_picker::PiecePicker;
 
-pub enum InternalEvent {}
-
 pub struct CoordinatorTransferState {
-    pub acquired_pieces: u64,
     pub bitfield: Bitfield,
     pub pieces_count: usize,
-    pub outgoing_senders: Vec<Sender<InternalEvent>>,
-    pub incoming_base_sender: Sender<InternalEvent>,
-    pub incoming_receiver: Receiver<InternalEvent>,
+    pub txs_to_peers: HashMap<usize, Sender<CoordinatorEvent>>,
+    pub tx_to_coordinator: Sender<CoordinatorInput>,
+    pub rx_coordinator: Receiver<CoordinatorInput>,
     pub piece_picker: Arc<Mutex<PiecePicker>>,
+    pub next_peer_transfer_idx: usize,
+    pub download_file_name: String,
 }
 
 impl CoordinatorTransferState {
     pub fn init(torrent: &Torrent, piece_picker: Arc<Mutex<PiecePicker>>) -> Self {
-        let (incoming_tx, incoming_rx) = mpsc::channel::<InternalEvent>(512);
+        let (tx_to_self, rx) = mpsc::channel::<CoordinatorInput>(512);
         return CoordinatorTransferState {
-            acquired_pieces: 0,
             bitfield: Bitfield::init(torrent.piece_hashes.len()),
             pieces_count: torrent.piece_hashes.len(),
-            outgoing_senders: vec![],
-            incoming_base_sender: incoming_tx,
-            incoming_receiver: incoming_rx,
+            txs_to_peers: HashMap::new(),
+            tx_to_coordinator: tx_to_self,
+            rx_coordinator: rx,
             piece_picker,
+            next_peer_transfer_idx: 0,
+            download_file_name: torrent.info.name.clone(),
         };
     }
 }
 
 pub struct PeerTransferState {
+    pub transfer_idx: usize,
     pub client_bitfield: Bitfield,
     pub peer_bitfield: Bitfield,
     pub client_is_choked: bool,
     pub peer_is_choked: bool,
     pub client_is_interested: bool,
     pub peer_is_interested: bool,
-    pub piece_in_download: Option<usize>,
     pub ongoing_requests: HashSet<(usize, usize, usize)>,
     pub piece_picker: Arc<Mutex<PiecePicker>>,
+    pub download_file_name: String,
 }
 
 pub fn register_new_peer_transfer(coordinator_state: &mut CoordinatorTransferState)
-                                  -> (PeerTransferState, (Sender<InternalEvent>, Receiver<InternalEvent>)) {
+                                  -> (PeerTransferState, (Sender<CoordinatorInput>, Receiver<CoordinatorEvent>)) {
     // create channel for coordinator task -> peer transfer task communication
-    let (coord_to_peer_tx, coord_to_peer_rx) = mpsc::channel::<InternalEvent>(512);
-    coordinator_state.outgoing_senders.push(coord_to_peer_tx);
-    return (PeerTransferState {
+    let (tx, rx) = mpsc::channel::<CoordinatorEvent>(512);
+    let peer_transfer_state = PeerTransferState {
+        transfer_idx: 0,
         client_bitfield: coordinator_state.bitfield.clone(),
         peer_bitfield: Bitfield::init(coordinator_state.pieces_count),
         client_is_choked: true,
         peer_is_choked: true,
         client_is_interested: false,
         peer_is_interested: false,
-        piece_in_download: None,
         ongoing_requests: HashSet::new(),
         piece_picker: coordinator_state.piece_picker.clone(),
-    }, (coordinator_state.incoming_base_sender.clone(), coord_to_peer_rx));
+        download_file_name: coordinator_state.download_file_name.clone(),
+    };
+    coordinator_state.txs_to_peers.insert(coordinator_state.next_peer_transfer_idx, tx);
+    coordinator_state.next_peer_transfer_idx += 1;
+
+    return (peer_transfer_state, (coordinator_state.tx_to_coordinator.clone(), rx));
 }
 
 //todo: might need to move Bitfield somewhere else

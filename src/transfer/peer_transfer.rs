@@ -9,7 +9,7 @@ const MAX_CONCURRENT_REQUESTS: usize = 10;
 #[derive(Debug)]
 pub enum P2PTransferError {}
 
-pub enum InboundData {
+enum InboundData {
     CoordinatorEvent(InternalEvent),
     PeerMessage(Message),
 }
@@ -107,13 +107,6 @@ async fn handle_block() {
     // if no other piece found, update to not interested
 }
 
-async fn try_select_piece_for_download(state: &PeerTransferState) -> Option<usize> {
-    let pieces_to_download = state.pieces_to_download.lock().await;
-    return pieces_to_download.keys()
-        .find(|piece_idx| { state.peer_bitfield.has_piece(**piece_idx) })
-        .copied();
-}
-
 async fn update_interested(state: &mut PeerTransferState, write_conn: &mut PeerWriteConn, client_interested: bool) -> Result<(), P2PConnError> {
     state.client_is_interested = client_interested;
     if client_interested {
@@ -128,15 +121,15 @@ async fn update_interested(state: &mut PeerTransferState, write_conn: &mut PeerW
 //     // pieces.get()
 // }
 
-async fn peer_is_interesting(state: &mut PeerTransferState) -> bool {
-    if state.piece_in_download.is_some() || !state.ongoing_requests.is_empty() {
-        return true;
-    }
-    let pieces_to_download = state.pieces_to_download.lock().await;
-    return pieces_to_download.keys()
-        .find(|piece_idx| { state.peer_bitfield.has_piece(**piece_idx) })
-        .is_some();
-}
+// async fn peer_is_interesting(state: &mut PeerTransferState) -> bool {
+//     if state.piece_in_download.is_some() || !state.ongoing_requests.is_empty() {
+//         return true;
+//     }
+//     let pieces_to_download = state.pieces_to_download.lock().await;
+//     return pieces_to_download.keys()
+//         .find(|piece_idx| { state.peer_bitfield.has_piece(**piece_idx) })
+//         .is_some();
+// }
 
 async fn receive_events_from_coordinator(recv: Receiver<InternalEvent>, tx: Sender<InboundData>) {}
 
