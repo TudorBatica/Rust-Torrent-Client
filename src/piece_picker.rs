@@ -1,9 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use rand::prelude::IteratorRandom;
-use crate::core_models::BlockPosition;
-use crate::transfer::state::Bitfield;
+use crate::core_models::entities::BlockPosition;
+use crate::core_models::entities::Bitfield;
 
-const ALL_BLOCKS_IN_TRANSFER_PENALTY: usize = 100;
+const ALL_BLOCKS_IN_TRANSFER_PENALTY: i32 = 100;
 
 struct PieceDownloadState {
     // hashsets contains tuples of (block_offset, block_length)
@@ -65,8 +65,8 @@ impl PiecePicker {
     pub fn pick(&mut self, peer_bitfield: &Bitfield, num_of_blocks: usize) -> Option<PickResult> {
         // find the first piece owned by the peer
         let (piece_idx, _) = self.priority_sorted_pieces.iter()
-            .find(|(piece_idx, _)| peer_bitfield.has_piece(*piece_idx))?
-            .to_owned();
+            .find(|(piece_idx, _)| peer_bitfield.has_piece(*piece_idx))
+            ?.to_owned();
 
         // pick blocks from it
         let had_unrequested_blocks = self.piece_has_unrequested_blocks(piece_idx);
@@ -74,7 +74,7 @@ impl PiecePicker {
 
         // if this piece now has all the blocks requested(not acquired), update its priority
         if had_unrequested_blocks && self.piece_has_unrequested_blocks(piece_idx) {
-            self.update_priority(piece_idx, 100);
+            self.update_priority(piece_idx, ALL_BLOCKS_IN_TRANSFER_PENALTY);
         }
 
         return picks;
@@ -165,8 +165,8 @@ impl PiecePicker {
 
 #[cfg(test)]
 mod tests {
-    use crate::transfer::piece_picker::PiecePicker;
-    use crate::transfer::state::Bitfield;
+    use crate::piece_picker::PiecePicker;
+    use crate::core_models::entities::Bitfield;
 
     #[test]
     fn test_picker_init() {

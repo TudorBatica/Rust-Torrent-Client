@@ -2,9 +2,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::sync::mpsc::{Receiver, Sender};
-use crate::internal_events::{CoordinatorEvent, CoordinatorInput};
+use crate::core_models::entities::Bitfield;
+use crate::core_models::internal_events::{CoordinatorEvent, CoordinatorInput};
 use crate::metadata::Torrent;
-use crate::transfer::piece_picker::PiecePicker;
+use crate::piece_picker::PiecePicker;
 
 pub struct CoordinatorTransferState {
     pub bitfield: Bitfield,
@@ -48,7 +49,7 @@ pub struct PeerTransferState {
 
 pub fn register_new_peer_transfer(coordinator_state: &mut CoordinatorTransferState)
                                   -> (PeerTransferState, (Sender<CoordinatorInput>, Receiver<CoordinatorEvent>)) {
-    // create channel for coordinator task -> peer transfer task communication
+    // create channel for coordinator task -> peer p2p task communication
     let (tx, rx) = mpsc::channel::<CoordinatorEvent>(512);
     let peer_transfer_state = PeerTransferState {
         transfer_idx: 0,
@@ -66,63 +67,4 @@ pub fn register_new_peer_transfer(coordinator_state: &mut CoordinatorTransferSta
     coordinator_state.next_peer_transfer_idx += 1;
 
     return (peer_transfer_state, (coordinator_state.tx_to_coordinator.clone(), rx));
-}
-
-//todo: might need to move Bitfield somewhere else
-#[derive(Clone)]
-pub struct Bitfield {
-    content: Vec<u8>,
-}
-
-impl Bitfield {
-    pub fn new(bytes: Vec<u8>) -> Self {
-        return Bitfield { content: bytes };
-    }
-
-    pub fn init(num_of_pieces: usize) -> Self {
-        let length_in_bytes = (num_of_pieces as f64 / 8.0).ceil() as usize;
-        return Bitfield { content: vec![0u8; length_in_bytes] };
-    }
-
-    pub fn piece_acquired(&mut self, piece_idx: usize) {
-        let (byte_idx, bit_idx) = (piece_idx / 8, piece_idx % 8);
-        let mask = 1 << (7 - bit_idx);
-        self.content[byte_idx as usize] |= mask;
-    }
-
-    pub fn has_piece(&self, piece_idx: usize) -> bool {
-        let (byte_idx, bit_idx) = (piece_idx / 8, piece_idx % 8);
-        self.content[byte_idx as usize] & (1 << (7 - bit_idx)) != 0
-    }
-}
-
-
-#[cfg(test)]
-mod tests {
-    use crate::transfer::state::Bitfield;
-
-    #[test]
-    pub fn bitfield_initialization_test() {
-        let bitfield: Bitfield = Bitfield::init(4);
-        assert_eq!(bitfield.content.len(), 1); // 1 byte
-        assert_eq!(bitfield.content[0], 0);
-    }
-
-    #[test]
-    pub fn bitfield_update_test() {
-        let mut bitfield: Bitfield = Bitfield::init(4);
-        bitfield.piece_acquired(3);
-        bitfield.piece_acquired(1);
-        bitfield.piece_acquired(2);
-        assert_eq!(bitfield.content[0], 112); // internal representation should be 01110000
-    }
-
-    #[test]
-    pub fn bitfield_has_test() {
-        let mut bitfield: Bitfield = Bitfield::init(4);
-        bitfield.piece_acquired(1);
-        bitfield.piece_acquired(2);
-        assert_eq!(bitfield.has_piece(1) && bitfield.has_piece(2), true);
-        assert_eq!(!bitfield.has_piece(0) && !bitfield.has_piece(3), true);
-    }
 }

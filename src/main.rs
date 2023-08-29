@@ -1,20 +1,28 @@
 use crate::config::Config;
-use crate::transfer::coordinator;
 
 mod config;
 mod metadata;
 mod tracker;
-mod download_assembler;
-mod internal_events;
-mod core_models;
+pub mod piece_picker;
+pub mod coordinator;
+pub mod state;
+mod file_provider;
+mod mocks;
 
-mod transfer {
-    pub mod coordinator;
-    pub mod peer_connection;
-    pub mod peer_message;
-    pub mod peer_transfer;
-    pub mod piece_picker;
-    pub mod state;
+mod core_models {
+    pub mod entities;
+    pub mod internal_events;
+}
+
+mod p2p {
+    pub mod connection;
+    pub mod transfer;
+}
+
+mod data_collector {
+    pub mod runner;
+    mod handler;
+    mod state;
 }
 
 #[tokio::main]

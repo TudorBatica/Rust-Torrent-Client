@@ -3,7 +3,7 @@ use tokio::io;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use crate::tracker::Peer;
-use crate::transfer::peer_message::Message;
+use crate::core_models::entities::Message;
 
 const PROTOCOL: &'static str = "BitTorrent protocol";
 

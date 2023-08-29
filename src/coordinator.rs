@@ -1,21 +1,19 @@
 use std::sync::Arc;
-use std::sync::mpsc::Sender;
-use tokio::fs::{OpenOptions};
+use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
-use tokio::net::{TcpListener};
+use tokio::net::TcpListener;
 use tokio::sync::{mpsc, Mutex};
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinHandle;
-use crate::{config, download_assembler};
+use crate::{config, data_collector, p2p, state};
 use crate::config::Config;
-use crate::core_models::{BlockPosition, TorrentLayout};
-use crate::internal_events::{CoordinatorInput, DownloadAssemblerEvent};
+use crate::coordinator::TransferError::TransferInitializationError;
 use crate::metadata::Torrent;
+use crate::core_models::entities::{BlockPosition, TorrentLayout};
+use crate::p2p::transfer;
 use crate::tracker::TrackerResponse;
-use crate::transfer::{peer_connection, peer_transfer, state};
-use crate::transfer::coordinator::TransferError::TransferInitializationError;
-use crate::transfer::piece_picker::PiecePicker;
-use crate::transfer::state::{CoordinatorTransferState};
+use crate::piece_picker::PiecePicker;
+use crate::state::CoordinatorTransferState;
 
 pub enum TransferError {
     TransferInitializationError(String)
@@ -41,7 +39,7 @@ pub async fn run(torrent: Torrent, tracker_response: TrackerResponse, client_con
     let (tx_to_assembler, rx_assembler) = mpsc::channel::<(BlockPosition, Vec<u8>)>(128);
 
     //todo: create cancellation tokens
-    let assembler_task = spawn_download_assembler_task(
+    let assembler_task = spawn_data_collector(
         &torrent,
         torrent_layout.clone(),
         &transfer_state,
@@ -60,16 +58,16 @@ pub async fn run(torrent: Torrent, tracker_response: TrackerResponse, client_con
         let (peer_transfer_state, channel) = state::register_new_peer_transfer(&mut transfer_state);
 
         return tokio::spawn(async move {
-            let (read_conn, write_conn) = match peer_connection::connect(peer, info_hash, client_id).await {
+            let (read_conn, write_conn) = match p2p::connection::connect(peer, info_hash, client_id).await {
                 Ok(conn) => conn,
                 Err(err) => {
-                    println!("P2P transfer failed: {:?}", err);
+                    println!("P2P p2p failed: {:?}", err);
                     return;
                 }
             };
-            match peer_transfer::run_transfer(peer_transfer_state, read_conn, write_conn, channel.0, channel.1).await {
-                Ok(_) => { println!("P2P transfer finished successfully!"); }
-                Err(err) => { println!("P2P transfer failed: {:?}", err); }
+            match transfer::run_transfer(peer_transfer_state, read_conn, write_conn, channel.0, channel.1).await {
+                Ok(_) => { println!("P2P p2p finished successfully!"); }
+                Err(err) => { println!("P2P p2p failed: {:?}", err); }
             }
         });
     }).collect();
@@ -94,10 +92,10 @@ fn init_piece_picker(torrent: &Torrent) -> Arc<Mutex<PiecePicker>> {
     return Arc::new(Mutex::new(picker));
 }
 
-async fn spawn_download_assembler_task(torrent: &Torrent,
-                                       torrent_layout: TorrentLayout,
-                                       transfer_state: &CoordinatorTransferState,
-                                       rx: Receiver<(BlockPosition, Vec<u8>)>) -> Result<JoinHandle<()>, TransferError> {
+async fn spawn_data_collector(torrent: &Torrent,
+                              torrent_layout: TorrentLayout,
+                              transfer_state: &CoordinatorTransferState,
+                              rx: Receiver<(BlockPosition, Vec<u8>)>) -> Result<JoinHandle<()>, TransferError> {
     let file = OpenOptions::new()
         .write(true)
         .create(true)
@@ -110,14 +108,13 @@ async fn spawn_download_assembler_task(torrent: &Torrent,
         .await
         .map_err(|_| TransferInitializationError("Could not set file length".to_string()))?;
 
-    let handle = tokio::spawn(
-        download_assembler::run(
-            transfer_state.piece_picker.clone(),
-            torrent.piece_hashes.clone(),
-            torrent_layout,
-            file,
-            rx,
-            transfer_state.tx_to_coordinator.clone()),
+    let handle = data_collector::runner::spawn(
+        transfer_state.piece_picker.clone(),
+        torrent.piece_hashes.clone(),
+        torrent_layout.clone(),
+        file,
+        rx,
+        transfer_state.tx_to_coordinator.clone(),
     );
 
     return Ok(handle);

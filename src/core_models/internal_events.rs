@@ -1,4 +1,4 @@
-use crate::core_models::BlockPosition;
+use crate::core_models::entities::BlockPosition;
 
 pub enum CoordinatorEvent {
     BlockAcquired(BlockPosition),

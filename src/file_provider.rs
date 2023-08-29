@@ -1,15 +1,22 @@
 use std::io::SeekFrom;
 use async_trait::async_trait;
+use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 #[async_trait]
-pub trait FileProvider {
+pub trait FileProvider: Send {
     async fn read(&mut self, piece_offset: usize, piece_len: usize) -> Vec<u8>;
     async fn write(&mut self, block_absolute_offset: usize, block_data: Vec<u8>);
 }
 
-struct TokioFileProvider {
+pub struct TokioFileProvider {
     file: tokio::fs::File,
+}
+
+impl TokioFileProvider {
+    pub fn new(file: File) -> Self {
+        return TokioFileProvider { file };
+    }
 }
 
 #[async_trait]

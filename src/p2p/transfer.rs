@@ -1,9 +1,9 @@
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
-use crate::internal_events::{CoordinatorEvent, CoordinatorInput};
-use crate::transfer::peer_connection::{P2PConnError, PeerReadConn, PeerWriteConn};
-use crate::transfer::peer_message::Message;
-use crate::transfer::state::{Bitfield, PeerTransferState};
+use crate::core_models::internal_events::{CoordinatorEvent, CoordinatorInput};
+use crate::core_models::entities::{Bitfield, Message};
+use crate::p2p::connection::{P2PConnError, PeerReadConn, PeerWriteConn};
+use crate::state::PeerTransferState;
 
 const MAX_CONCURRENT_REQUESTS: usize = 10;
 
@@ -17,7 +17,7 @@ enum InboundData {
 
 pub async fn run_transfer(mut state: PeerTransferState,
                           read_conn: PeerReadConn,
-                          mut write_conn: PeerWriteConn,
+                          write_conn: PeerWriteConn,
                           events_tx: Sender<CoordinatorInput>,
                           events_rx: Receiver<CoordinatorEvent>) -> Result<(), P2PTransferError> {
     let (inbound_data_tx, mut inbound_data_rx) = mpsc::channel::<InboundData>(128);
