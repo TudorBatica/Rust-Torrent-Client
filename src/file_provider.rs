@@ -2,7 +2,9 @@ use std::io::SeekFrom;
 use async_trait::async_trait;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+use mockall::automock;
 
+#[automock]
 #[async_trait]
 pub trait FileProvider: Send {
     async fn read(&mut self, piece_offset: usize, piece_len: usize) -> Vec<u8>;

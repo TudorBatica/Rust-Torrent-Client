@@ -12,19 +12,19 @@ pub struct TorrentLayout {
     pub pieces: usize,
     pub head_pieces_length: usize,
     pub last_piece_length: usize,
+    pub blocks_in_head_pieces: usize,
+    pub blocks_in_last_piece: usize,
     pub usual_block_length: usize,
     pub head_pieces_last_block_length: usize,
     pub last_piece_last_block_length: usize,
-    pub blocks_in_head_pieces: usize,
-    pub blocks_in_last_piece: usize,
 }
 
 impl TorrentLayout {
     pub fn blocks_in_piece(&self, piece_idx: usize) -> usize {
         return if piece_idx == self.pieces - 1 {
-            self.last_piece_length
+            self.blocks_in_last_piece
         } else {
-            self.head_pieces_length
+            self.blocks_in_head_pieces
         };
     }
 
@@ -33,6 +33,22 @@ impl TorrentLayout {
             self.last_piece_length
         } else {
             self.head_pieces_length
+        };
+    }
+
+    pub fn last_block_length_for_piece(&self, piece_idx: usize) -> usize {
+        return if piece_idx == self.pieces - 1 {
+            self.last_piece_last_block_length
+        } else {
+            self.head_pieces_last_block_length
+        };
+    }
+
+    pub fn block_length(&self, piece_idx: usize, block_idx: usize) -> usize {
+        return if block_idx == self.blocks_in_piece(piece_idx) - 1 {
+            self.last_block_length_for_piece(piece_idx)
+        } else {
+            self.usual_block_length
         };
     }
 }
