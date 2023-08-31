@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use sha1::{Digest, Sha1};
 use crate::data_collector::state::DataCollectorState;
 use crate::core_models::entities::{BlockPosition};
@@ -44,6 +45,7 @@ pub async fn handle_block(block: &BlockPosition, block_data: Vec<u8>, state: &mu
             let mut picker = state.piece_picker.lock().await;
             picker.reinsert_piece(block.piece_idx);
         }
+        state.written_data.insert(block.piece_idx, HashSet::new());
         return DataCollectionResult::NoUpdate;
     }
 
@@ -63,6 +65,7 @@ pub async fn handle_block(block: &BlockPosition, block_data: Vec<u8>, state: &mu
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
     use std::sync::Arc;
     use tokio::sync::Mutex;
     use crate::core_models::entities::{BlockPosition, TorrentLayout};
@@ -103,7 +106,35 @@ mod tests {
         file_provider.expect_read().returning(move |_, _| piece.clone());
 
         let mut state = init_state(&torrent, Box::new(file_provider));
-        let mut result: DataCollectionResult = DataCollectionResult::BlockStored;
+        let mut result: DataCollectionResult = DataCollectionResult::NoUpdate;
+        let blocks_count = torrent.layout.blocks_in_piece(piece_idx);
+
+        for block_idx in 0..blocks_count {
+            let block_pos: &BlockPosition = &torrent.pieces[piece_idx][block_idx];
+            let block_data = torrent.get_block_data(piece_idx, block_idx);
+            result = handle_block(block_pos, block_data, &mut state).await;
+
+            if block_idx < blocks_count - 1 {
+                assert_eq!(result, DataCollectionResult::BlockStored);
+            }
+        }
+
+        assert_eq!(result, DataCollectionResult::PieceAcquired);
+        assert_eq!(state.acquired_pieces, 1);
+    }
+
+    #[tokio::test]
+    async fn test_download_complete() {
+        let torrent = mocks::generate_mock_torrent(1);
+
+        let piece_idx = 0 as usize;
+        let piece = torrent.pieces_data[piece_idx.clone()].to_vec();
+        let mut file_provider = crate::file_provider::MockFileProvider::new();
+        file_provider.expect_write().returning(|_, _| ());
+        file_provider.expect_read().returning(move |_, _| piece.clone());
+
+        let mut state = init_state(&torrent, Box::new(file_provider));
+        let mut result: DataCollectionResult = DataCollectionResult::NoUpdate;
 
         for block_idx in 0..torrent.layout.blocks_in_piece(piece_idx) {
             let block_pos: &BlockPosition = &torrent.pieces[piece_idx][block_idx];
@@ -111,8 +142,50 @@ mod tests {
             result = handle_block(block_pos, block_data, &mut state).await;
         }
 
-        assert_eq!(result, DataCollectionResult::PieceAcquired);
+        assert_eq!(result, DataCollectionResult::DownloadComplete);
         assert_eq!(state.acquired_pieces, 1);
+    }
+
+    #[tokio::test]
+    async fn test_block_already_stored() {
+        let torrent = mocks::generate_mock_torrent(3);
+        let mut file_provider = crate::file_provider::MockFileProvider::new();
+        file_provider.expect_read().returning(|_, _| vec![]);
+        file_provider.expect_write().returning(|_, _| ());
+        let mut state = init_state(&torrent, Box::new(file_provider));
+
+        let block_pos: &BlockPosition = &torrent.pieces[0][0];
+        let block_data = torrent.get_block_data(0, 0);
+
+        handle_block(block_pos, block_data.clone(), &mut state).await;
+        let result = handle_block(block_pos, block_data, &mut state).await;
+
+        assert_eq!(result, DataCollectionResult::NoUpdate);
+    }
+
+    #[tokio::test]
+    async fn test_piece_corrupt() {
+        let torrent = mocks::generate_mock_torrent(3);
+
+        let piece_idx = 0 as usize;
+        let piece: Vec<u8> = torrent.pieces_data[piece_idx.clone()].to_vec();
+        let mut file_provider = crate::file_provider::MockFileProvider::new();
+        file_provider.expect_write().returning(|_, _| ());
+        file_provider.expect_read().returning(move |_, _| vec![1; piece.len()]);
+
+        let mut state = init_state(&torrent, Box::new(file_provider));
+        let mut result: DataCollectionResult = DataCollectionResult::BlockStored;
+        let blocks_count = torrent.layout.blocks_in_piece(piece_idx);
+
+        for block_idx in 0..blocks_count {
+            let block_pos: &BlockPosition = &torrent.pieces[piece_idx][block_idx];
+            let block_data = torrent.get_block_data(piece_idx, block_idx);
+            result = handle_block(block_pos, block_data, &mut state).await;
+        }
+
+        assert_eq!(result, DataCollectionResult::NoUpdate);
+        assert_eq!(state.acquired_pieces, 0);
+        assert!(state.written_data.get(&piece_idx).unwrap().is_empty())
     }
 
     fn init_state(torrent: &MockTorrent, file_provider: Box<dyn FileProvider>) -> DataCollectorState {

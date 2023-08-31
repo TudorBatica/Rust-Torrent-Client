@@ -13,8 +13,10 @@ pub fn generate_mock_torrent(num_of_pieces: usize) -> MockTorrent {
     let mut piece_hashes = Vec::new();
     let mut pieces_data = Vec::new();
     let mut pieces: Vec<Vec<BlockPosition>> = Vec::new();
-    let piece_len = config::BLOCK_SIZE_BYTES * 5;
-    let last_piece_len = config::BLOCK_SIZE_BYTES * 3;
+    let blocks_in_head_pieces = 5;
+    let blocks_in_last_piece = if num_of_pieces > 1 { 3 } else { 5 };
+    let piece_len = config::BLOCK_SIZE_BYTES * blocks_in_head_pieces;
+    let last_piece_len = if num_of_pieces > 1 { config::BLOCK_SIZE_BYTES * blocks_in_last_piece } else { piece_len };
     let layout = TorrentLayout {
         pieces: num_of_pieces,
         head_pieces_length: piece_len * (num_of_pieces - 1),
@@ -22,8 +24,8 @@ pub fn generate_mock_torrent(num_of_pieces: usize) -> MockTorrent {
         usual_block_length: config::BLOCK_SIZE_BYTES,
         head_pieces_last_block_length: config::BLOCK_SIZE_BYTES,
         last_piece_last_block_length: last_piece_len % config::BLOCK_SIZE_BYTES,
-        blocks_in_head_pieces: 5,
-        blocks_in_last_piece: 3,
+        blocks_in_head_pieces,
+        blocks_in_last_piece,
     };
 
     for piece_idx in 0..num_of_pieces {
