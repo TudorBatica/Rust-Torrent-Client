@@ -2,8 +2,26 @@ use std::collections::{HashMap, HashSet};
 use rand::prelude::IteratorRandom;
 use crate::core_models::entities::BlockPosition;
 use crate::core_models::entities::Bitfield;
+use async_trait::async_trait;
+use mockall::automock;
 
 const ALL_BLOCKS_IN_TRANSFER_PENALTY: i32 = 100;
+
+pub struct PickResult {
+    // vector of (piece_idx, block_offset, block_length)
+    pub(crate) blocks: Vec<(usize, usize, usize)>,
+    pub(crate) end_game_mode_enabled: bool,
+}
+
+#[automock]
+pub trait PiecePicker: Send {
+    fn pick(&mut self, peer_bitfield: &Bitfield, num_of_blocks: usize) -> Option<PickResult>;
+    fn increase_availability_for_piece(&mut self, piece_idx: usize);
+    fn increase_availability_for_pieces(&mut self, piece_idxs: Vec<usize>);
+    fn decrease_availability_for_pieces(&mut self, piece_idxs: Vec<usize>);
+    fn remove_block(&mut self, block: &BlockPosition);
+    fn reinsert_piece(&mut self, piece_idx: usize);
+}
 
 struct PieceDownloadState {
     // hashsets contains tuples of (block_offset, block_length)
@@ -29,14 +47,7 @@ impl PieceDownloadState {
     }
 }
 
-pub struct PickResult {
-    // vector of (piece_idx, block_offset, block_length)
-    blocks: Vec<(usize, usize, usize)>,
-    end_game_mode_enabled: bool,
-}
-
-
-pub struct PiecePicker {
+pub struct RarestPiecePicker {
     // vec of (piece_idx, inverse_priority)
     priority_sorted_pieces: Vec<(usize, i32)>,
     // key: piece idx, value: index of the piece in the priority sorted pieces vector
@@ -46,7 +57,7 @@ pub struct PiecePicker {
 
 }
 
-impl PiecePicker {
+impl RarestPiecePicker {
     pub fn init(num_of_pieces: usize, piece_length: usize, last_piece_length: usize, block_size: usize) -> Self {
         let priority_sorted_pieces: Vec<(usize, i32)> = (0..num_of_pieces).map(|idx| (idx, 0)).collect();
         let piece_lookup_table: HashMap<usize, usize> = (0..num_of_pieces).map(|idx| (idx, idx)).collect();
@@ -57,62 +68,7 @@ impl PiecePicker {
             piece_download_state.insert(piece_idx, piece);
         }
 
-        return PiecePicker { priority_sorted_pieces, piece_lookup_table, piece_download_state };
-    }
-
-    // For now, it only chooses from one piece. This needs to be changed
-    // vector of (piece_idx, block_offset, block_length) + boolean flag = end-game mode enabled
-    pub fn pick(&mut self, peer_bitfield: &Bitfield, num_of_blocks: usize) -> Option<PickResult> {
-        // find the first piece owned by the peer
-        let (piece_idx, _) = self.priority_sorted_pieces.iter()
-            .find(|(piece_idx, _)| peer_bitfield.has_piece(*piece_idx))
-            ?.to_owned();
-
-        // pick blocks from it
-        let had_unrequested_blocks = self.piece_has_unrequested_blocks(piece_idx);
-        let picks = Some(self.pick_blocks(piece_idx, num_of_blocks));
-
-        // if this piece now has all the blocks requested(not acquired), update its priority
-        if had_unrequested_blocks && self.piece_has_unrequested_blocks(piece_idx) {
-            self.update_priority(piece_idx, ALL_BLOCKS_IN_TRANSFER_PENALTY);
-        }
-
-        return picks;
-    }
-
-    pub fn increase_availability_for_piece(&mut self, piece_idx: usize) {
-        self.update_priority(piece_idx, 1);
-    }
-
-    pub fn increase_availability_for_pieces(&mut self, piece_idxs: Vec<usize>) {
-        for piece_idx in piece_idxs {
-            self.increase_availability_for_piece(piece_idx);
-        }
-    }
-
-    pub fn decrease_availability_for_pieces(&mut self, piece_idxs: Vec<usize>) {
-        for piece_idx in piece_idxs {
-            self.update_priority(piece_idx, -1);
-        }
-    }
-
-    // returns (block_removed, piece_removed)
-    pub fn remove_block(&mut self, block: &BlockPosition) -> (bool, bool) {
-        if let Some(piece_state) = self.piece_download_state.get_mut(&block.piece_idx) {
-            piece_state.blocks_in_transfer.remove(&(block.offset, block.length));
-            if !piece_state.blocks_in_transfer.is_empty() || !piece_state.blocks_unrequested.is_empty() {
-                return (true, false);
-            }
-            if let Some(array_idx) = self.piece_lookup_table.get(&block.piece_idx) {
-                self.priority_sorted_pieces.remove(*array_idx);
-                return (true, true);
-            }
-        }
-        return (false, false);
-    }
-
-    pub fn reinsert_piece(&mut self, piece_idx: usize) {
-        //todo: implement
+        return RarestPiecePicker { priority_sorted_pieces, piece_lookup_table, piece_download_state };
     }
 
     fn pick_blocks(&mut self, piece_idx: usize, num_of_blocks: usize) -> PickResult {
@@ -163,14 +119,68 @@ impl PiecePicker {
     }
 }
 
+#[async_trait]
+impl PiecePicker for RarestPiecePicker {
+    // For now, it only chooses from one piece. This needs to be changed
+    // vector of (piece_idx, block_offset, block_length) + boolean flag = end-game mode enabled
+    fn pick(&mut self, peer_bitfield: &Bitfield, num_of_blocks: usize) -> Option<PickResult> {
+        // find the first piece owned by the peer
+        let (piece_idx, _) = self.priority_sorted_pieces.iter()
+            .find(|(piece_idx, _)| peer_bitfield.has_piece(*piece_idx))
+            ?.to_owned();
+
+        // pick blocks from it
+        let had_unrequested_blocks = self.piece_has_unrequested_blocks(piece_idx);
+        let picks = Some(self.pick_blocks(piece_idx, num_of_blocks));
+
+        // if this piece now has all the blocks requested(not acquired), update its priority
+        if had_unrequested_blocks && self.piece_has_unrequested_blocks(piece_idx) {
+            self.update_priority(piece_idx, ALL_BLOCKS_IN_TRANSFER_PENALTY);
+        }
+
+        return picks;
+    }
+
+    fn increase_availability_for_piece(&mut self, piece_idx: usize) {
+        self.update_priority(piece_idx, 1);
+    }
+
+    fn increase_availability_for_pieces(&mut self, piece_idxs: Vec<usize>) {
+        for piece_idx in piece_idxs {
+            self.increase_availability_for_piece(piece_idx);
+        }
+    }
+
+    fn decrease_availability_for_pieces(&mut self, piece_idxs: Vec<usize>) {
+        for piece_idx in piece_idxs {
+            self.update_priority(piece_idx, -1);
+        }
+    }
+
+    // returns (block_removed, piece_removed)
+    fn remove_block(&mut self, block: &BlockPosition) {
+        if let Some(piece_state) = self.piece_download_state.get_mut(&block.piece_idx) {
+            piece_state.blocks_in_transfer.remove(&(block.offset, block.length));
+            if let Some(array_idx) = self.piece_lookup_table.get(&block.piece_idx) {
+                self.priority_sorted_pieces.remove(*array_idx);
+            }
+        }
+    }
+
+    fn reinsert_piece(&mut self, piece_idx: usize) {
+        //todo: implement
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
-    use crate::piece_picker::PiecePicker;
+    use crate::piece_picker::{PiecePicker, RarestPiecePicker};
     use crate::core_models::entities::Bitfield;
 
     #[test]
     fn test_picker_init() {
-        let piece_picker = PiecePicker::init(5, 16384, 8192, 16);
+        let piece_picker = RarestPiecePicker::init(5, 16384, 8192, 16);
 
         assert_eq!(piece_picker.priority_sorted_pieces.len(), 5);
         assert_eq!(piece_picker.piece_lookup_table.len(), 5);
@@ -179,7 +189,7 @@ mod tests {
 
     #[test]
     fn test_pick_no_blocks_available() {
-        let mut piece_picker = PiecePicker::init(3, 8192, 4096, 16);
+        let mut piece_picker = RarestPiecePicker::init(3, 8192, 4096, 16);
         let peer_bitfield = Bitfield::init(2); // initialize an all 0 bitfield
         let pick_result = piece_picker.pick(&peer_bitfield, 2);
 
@@ -188,7 +198,7 @@ mod tests {
 
     #[test]
     fn test_pick_some_blocks_available() {
-        let mut piece_picker = PiecePicker::init(3, 8192, 4096, 16);
+        let mut piece_picker = RarestPiecePicker::init(3, 8192, 4096, 16);
         let mut peer_bitfield = Bitfield::init(3);
         peer_bitfield.piece_acquired(0);
         let pick_result = piece_picker.pick(&peer_bitfield, 10).unwrap();
@@ -200,7 +210,7 @@ mod tests {
 
     #[test]
     fn test_availability_updates() {
-        let mut piece_picker = PiecePicker::init(4, 8, 8, 1);
+        let mut piece_picker = RarestPiecePicker::init(4, 8, 8, 1);
         piece_picker.increase_availability_for_piece(1);
         piece_picker.increase_availability_for_piece(1);
         piece_picker.increase_availability_for_piece(1);
@@ -227,7 +237,7 @@ mod tests {
 
     #[test]
     fn test_pick_end_game_mode() {
-        let mut piece_picker = PiecePicker::init(1, 8, 8, 4);
+        let mut piece_picker = RarestPiecePicker::init(1, 8, 8, 4);
         let mut peer_bitfield = Bitfield::init(1);
         peer_bitfield.piece_acquired(0);
         piece_picker.pick(&peer_bitfield, 2).unwrap();
