@@ -65,7 +65,13 @@ pub async fn run(torrent: Torrent, tracker_response: TrackerResponse, client_con
                     return;
                 }
             };
-            match transfer::run_transfer(peer_transfer_state, read_conn, write_conn, channel.0, channel.1).await {
+            match transfer::run_transfer(
+                peer_transfer_state,
+                Box::new(read_conn),
+                Box::new(write_conn),
+                channel.0,
+                channel.1,
+            ).await {
                 Ok(_) => { println!("P2P p2p finished successfully!"); }
                 Err(err) => { println!("P2P p2p failed: {:?}", err); }
             }

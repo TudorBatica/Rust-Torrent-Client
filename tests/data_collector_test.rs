@@ -1,7 +1,7 @@
 use rust_torrent_client;
 
 use std::sync::Arc;
-use tokio::sync::mpsc::{channel, Sender};
+use tokio::sync::mpsc::{channel};
 use tokio::sync::Mutex;
 use rust_torrent_client::core_models::entities::{BlockPosition};
 use rust_torrent_client::core_models::events::InternalEvent;

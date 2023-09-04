@@ -1,4 +1,4 @@
-use std::error::Error;
+use async_trait::async_trait;
 use tokio::io;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
@@ -19,12 +19,23 @@ pub enum P2PConnError {
     MessageDeliveryFailed(String),
 }
 
+#[async_trait]
+pub trait PeerReceiver: Send {
+    async fn receive(&mut self) -> Result<Message, P2PConnError>;
+}
+
+#[async_trait]
+pub trait PeerSender: Send {
+    async fn send(&mut self, message: Message) -> Result<(), P2PConnError>;
+}
+
 pub struct PeerReadConn {
     stream: ReadHalf<TcpStream>,
 }
 
-impl PeerReadConn {
-    pub async fn receive(&mut self) -> Result<Message, P2PConnError> {
+#[async_trait]
+impl PeerReceiver for PeerReadConn {
+    async fn receive(&mut self) -> Result<Message, P2PConnError> {
         let len = read_from_stream(&mut self.stream, 4).await?;
         let len = usize_from_be_bytes(len);
         if len == 0 {
@@ -42,11 +53,12 @@ pub struct PeerWriteConn {
     stream: WriteHalf<TcpStream>,
 }
 
-impl PeerWriteConn {
-    pub async fn send(&mut self, message: Message) -> Result<(), P2PConnError> {
+#[async_trait]
+impl PeerSender for PeerWriteConn {
+    async fn send(&mut self, message: Message) -> Result<(), P2PConnError> {
         return match self.stream.write_all(&*message.serialize()).await {
             Ok(_) => Ok(()),
-            Err(err) => Err(P2PConnError::MessageDeliveryFailed(err.description().to_string()))
+            Err(err) => Err(P2PConnError::MessageDeliveryFailed(err.to_string()))
         };
     }
 }
