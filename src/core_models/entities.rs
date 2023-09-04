@@ -1,13 +1,13 @@
 //todo: replace all usages of (usize, usize, usize) w/ block
 
-#[derive(Clone, Eq, Hash, PartialEq)]
+#[derive(Clone, Default, Debug, Eq, Hash, PartialEq)]
 pub struct BlockPosition {
     pub piece_idx: usize,
     pub offset: usize,
     pub length: usize,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TorrentLayout {
     pub pieces: usize,
     pub head_pieces_length: usize,

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 use tokio::fs::OpenOptions;
-use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, Mutex};
 use tokio::sync::mpsc::Receiver;
@@ -10,9 +9,10 @@ use crate::config::Config;
 use crate::coordinator::TransferError::TransferInitializationError;
 use crate::metadata::Torrent;
 use crate::core_models::entities::{BlockPosition, TorrentLayout};
+use crate::file_provider::TokioFileProvider;
 use crate::p2p::transfer;
 use crate::tracker::TrackerResponse;
-use crate::piece_picker::PiecePicker;
+use crate::piece_picker::RarestPiecePicker;
 use crate::state::CoordinatorTransferState;
 
 pub enum TransferError {
@@ -80,10 +80,10 @@ pub async fn run(torrent: Torrent, tracker_response: TrackerResponse, client_con
     return Ok(());
 }
 
-fn init_piece_picker(torrent: &Torrent) -> Arc<Mutex<PiecePicker>> {
+fn init_piece_picker(torrent: &Torrent) -> Arc<Mutex<RarestPiecePicker>> {
     let last_piece_len = torrent.info.length.expect("only single file torrents supported")
         - (torrent.info.piece_length * torrent.piece_hashes.len() as u64 - 1);
-    let picker = PiecePicker::init(
+    let picker = RarestPiecePicker::init(
         torrent.piece_hashes.len(),
         torrent.info.piece_length as usize,
         last_piece_len as usize,
@@ -108,14 +108,17 @@ async fn spawn_data_collector(torrent: &Torrent,
         .await
         .map_err(|_| TransferInitializationError("Could not set file length".to_string()))?;
 
-    let handle = data_collector::runner::spawn(
-        transfer_state.piece_picker.clone(),
-        torrent.piece_hashes.clone(),
-        torrent_layout.clone(),
-        file,
-        rx,
-        transfer_state.tx_to_coordinator.clone(),
-    );
+    let file_provider = Box::new(TokioFileProvider::new(file));
+    let layout = torrent_layout.clone();
+    let hashes = torrent.piece_hashes.clone();
+    let picker = transfer_state.piece_picker.clone();
+    let tx = transfer_state.tx_to_coordinator.clone();
+
+    let handle = tokio::spawn(async {
+        data_collector::run(
+            picker, file_provider, hashes, layout, rx, tx,
+        ).await;
+    });
 
     return Ok(handle);
 }

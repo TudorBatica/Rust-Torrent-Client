@@ -1,14 +1,13 @@
-use std::io::SeekFrom;
+use std::io::{Read, Seek, SeekFrom, Write};
 use async_trait::async_trait;
-use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use mockall::automock;
 
 #[automock]
 #[async_trait]
 pub trait FileProvider: Send {
-    async fn read(&mut self, piece_offset: usize, piece_len: usize) -> Vec<u8>;
-    async fn write(&mut self, block_absolute_offset: usize, block_data: Vec<u8>);
+    async fn read(&mut self, offset: usize, length: usize) -> Vec<u8>;
+    async fn write(&mut self, offset: usize, data: Vec<u8>);
 }
 
 pub struct TokioFileProvider {
@@ -16,7 +15,7 @@ pub struct TokioFileProvider {
 }
 
 impl TokioFileProvider {
-    pub fn new(file: File) -> Self {
+    pub fn new(file: tokio::fs::File) -> Self {
         return TokioFileProvider { file };
     }
 }
@@ -33,6 +32,31 @@ impl FileProvider for TokioFileProvider {
     async fn write(&mut self, offset: usize, data: Vec<u8>) {
         self.file.seek(SeekFrom::Start(offset as u64)).await.unwrap();
         self.file.write_all(&*data).await.unwrap();
+    }
+}
+
+pub struct StdFileProvider {
+    file: std::fs::File,
+}
+
+impl StdFileProvider {
+    pub fn new(file: std::fs::File) -> Self {
+        return StdFileProvider { file };
+    }
+}
+
+#[async_trait]
+impl FileProvider for StdFileProvider {
+    async fn read(&mut self, offset: usize, length: usize) -> Vec<u8> {
+        let mut piece_buff = vec![0u8; length];
+        self.file.seek(SeekFrom::Start(offset as u64)).unwrap();
+        self.file.read_exact(&mut piece_buff).unwrap();
+        return piece_buff;
+    }
+
+    async fn write(&mut self, offset: usize, data: Vec<u8>) {
+        self.file.seek(SeekFrom::Start(offset as u64)).unwrap();
+        self.file.write_all(&*data).unwrap();
     }
 }
 

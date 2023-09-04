@@ -2,6 +2,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use crate::core_models::internal_events::{CoordinatorEvent, CoordinatorInput};
 use crate::core_models::entities::{Bitfield, Message};
+use crate::core_models::events::InternalEvent;
 use crate::p2p::connection::{P2PConnError, PeerReadConn, PeerWriteConn};
 use crate::state::PeerTransferState;
 
@@ -18,7 +19,7 @@ enum InboundData {
 pub async fn run_transfer(mut state: PeerTransferState,
                           read_conn: PeerReadConn,
                           write_conn: PeerWriteConn,
-                          events_tx: Sender<CoordinatorInput>,
+                          events_tx: Sender<InternalEvent>,
                           events_rx: Receiver<CoordinatorEvent>) -> Result<(), P2PTransferError> {
     let (inbound_data_tx, mut inbound_data_rx) = mpsc::channel::<InboundData>(128);
     let _ = tokio::spawn(receive_peer_messages(read_conn, inbound_data_tx.clone()));
