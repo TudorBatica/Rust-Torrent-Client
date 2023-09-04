@@ -1,29 +1,5 @@
-use crate::config::Config;
-
-mod config;
-mod metadata;
-mod tracker;
-pub mod piece_picker;
-pub mod coordinator;
-pub mod state;
-mod file_provider;
-mod mocks;
-
-mod core_models {
-    pub mod entities;
-    pub mod internal_events;
-}
-
-mod p2p {
-    pub mod connection;
-    pub mod transfer;
-}
-
-mod data_collector {
-    pub mod runner;
-    mod handler;
-    mod state;
-}
+use rust_torrent_client::{coordinator, metadata, tracker};
+use rust_torrent_client::config::Config;
 
 #[tokio::main]
 async fn main() {
