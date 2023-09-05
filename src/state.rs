@@ -4,14 +4,14 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::sync::mpsc::{Receiver, Sender};
 use crate::core_models::entities::Bitfield;
 use crate::core_models::events::InternalEvent;
-use crate::core_models::internal_events::{CoordinatorEvent};
 use crate::metadata::Torrent;
+use crate::p2p::transfer::InboundEvent;
 use crate::piece_picker::RarestPiecePicker;
 
 pub struct CoordinatorTransferState {
     pub bitfield: Bitfield,
     pub pieces_count: usize,
-    pub txs_to_peers: HashMap<usize, Sender<CoordinatorEvent>>,
+    pub txs_to_peers: HashMap<usize, Sender<InboundEvent>>,
     pub tx_to_coordinator: Sender<InternalEvent>,
     pub rx_coordinator: Receiver<InternalEvent>,
     pub piece_picker: Arc<Mutex<RarestPiecePicker>>,
@@ -49,9 +49,9 @@ pub struct PeerTransferState {
 }
 
 pub fn register_new_peer_transfer(coordinator_state: &mut CoordinatorTransferState)
-                                  -> (PeerTransferState, (Sender<InternalEvent>, Receiver<CoordinatorEvent>)) {
+                                  -> (PeerTransferState, (Sender<InternalEvent>, Receiver<InboundEvent>)) {
     // create channel for coordinator task -> peer p2p task communication
-    let (tx, rx) = mpsc::channel::<CoordinatorEvent>(512);
+    let (tx, rx) = mpsc::channel::<InboundEvent>(512);
     let peer_transfer_state = PeerTransferState {
         transfer_idx: 0,
         client_bitfield: coordinator_state.bitfield.clone(),

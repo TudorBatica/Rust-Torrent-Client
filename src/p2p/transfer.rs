@@ -1,7 +1,6 @@
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
-use crate::core_models::internal_events::{CoordinatorEvent};
-use crate::core_models::entities::{Bitfield, Message};
+use crate::core_models::entities::{Bitfield, BlockPosition, Message};
 use crate::core_models::events::InternalEvent;
 use crate::p2p::connection::{PeerReceiver, PeerSender};
 use crate::state::PeerTransferState;
@@ -11,23 +10,30 @@ const MAX_CONCURRENT_REQUESTS: usize = 10;
 #[derive(Debug)]
 pub enum P2PTransferError {}
 
+// Events that can be received by a p2p transfer task
+pub enum InboundEvent {
+    BlockAcquired(BlockPosition),
+    PieceAcquired(usize),
+}
+
+// Helper enum that models all the possible incoming messages
 enum InboundData {
-    CoordinatorEvent(CoordinatorEvent),
+    InternalEvent(InboundEvent),
     PeerMessage(Message),
 }
 
-pub async fn run_transfer(mut state: PeerTransferState,
-                          read_conn: Box<dyn PeerReceiver>,
-                          write_conn: Box<dyn PeerSender>,
-                          events_tx: Sender<InternalEvent>,
-                          events_rx: Receiver<CoordinatorEvent>) -> Result<(), P2PTransferError> {
+pub async fn run(mut state: PeerTransferState,
+                 read_conn: Box<dyn PeerReceiver>,
+                 write_conn: Box<dyn PeerSender>,
+                 events_tx: Sender<InternalEvent>,
+                 events_rx: Receiver<InboundEvent>) -> Result<(), P2PTransferError> {
     let (inbound_data_tx, mut inbound_data_rx) = mpsc::channel::<InboundData>(128);
     let _ = tokio::spawn(recv_peer_messages(read_conn, inbound_data_tx.clone()));
     let _ = tokio::spawn(recv_events());
 
     while let Some(data) = inbound_data_rx.recv().await {
         match data {
-            InboundData::CoordinatorEvent(event) => handle_event(),
+            InboundData::InternalEvent(event) => handle_event(),
             InboundData::PeerMessage(message) => handle_peer_messages(message, &mut state)
         };
     }

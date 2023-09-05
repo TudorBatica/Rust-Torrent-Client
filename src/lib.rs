@@ -11,7 +11,6 @@ pub mod data_collector;
 pub mod core_models {
     pub mod entities;
     pub mod events;
-    pub mod internal_events;
 }
 
 pub mod p2p {

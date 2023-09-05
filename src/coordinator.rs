@@ -65,7 +65,7 @@ pub async fn run(torrent: Torrent, tracker_response: TrackerResponse, client_con
                     return;
                 }
             };
-            match transfer::run_transfer(
+            match transfer::run(
                 peer_transfer_state,
                 Box::new(read_conn),
                 Box::new(write_conn),
