@@ -167,7 +167,6 @@ impl Message {
     }
 }
 
-//todo: might need to move Bitfield somewhere else
 #[derive(Clone)]
 pub struct Bitfield {
     content: Vec<u8>,
@@ -192,6 +191,22 @@ impl Bitfield {
     pub fn has_piece(&self, piece_idx: usize) -> bool {
         let (byte_idx, bit_idx) = (piece_idx / 8, piece_idx % 8);
         self.content[byte_idx as usize] & (1 << (7 - bit_idx)) != 0
+    }
+
+    // returns whether `self` has any pieces that `other` does not
+    pub fn has_any_missing_pieces_from(&self, other: &Bitfield) -> bool {
+        let other_not: Vec<u8> = other.content.clone()
+            .into_iter()
+            .map(|byte| !byte)
+            .collect();
+
+        for (other_byte, self_byte) in other_not.iter().zip(self.content.iter()) {
+            if (other_byte & self_byte) != 0 {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
 
@@ -223,5 +238,25 @@ mod tests {
         bitfield.piece_acquired(2);
         assert_eq!(bitfield.has_piece(1) && bitfield.has_piece(2), true);
         assert_eq!(!bitfield.has_piece(0) && !bitfield.has_piece(3), true);
+    }
+
+    #[test]
+    pub fn bitfield_has_any_missing_pieces_from_test() {
+        let mut bitfield1 = Bitfield::init(4);
+        let mut bitfield2 = Bitfield::init(4);
+        assert_eq!(bitfield1.has_any_missing_pieces_from(&bitfield2), false);
+        assert_eq!(bitfield2.has_any_missing_pieces_from(&bitfield1), false);
+
+        bitfield2.piece_acquired(1);
+        assert_eq!(bitfield1.has_any_missing_pieces_from(&bitfield2), false);
+        assert_eq!(bitfield2.has_any_missing_pieces_from(&bitfield1), true);
+
+        bitfield1.piece_acquired(1);
+        assert_eq!(bitfield1.has_any_missing_pieces_from(&bitfield2), false);
+        assert_eq!(bitfield2.has_any_missing_pieces_from(&bitfield1), false);
+
+        bitfield1.piece_acquired(3);
+        assert_eq!(bitfield1.has_any_missing_pieces_from(&bitfield2), true);
+        assert_eq!(bitfield2.has_any_missing_pieces_from(&bitfield1), false);
     }
 }
