@@ -2,9 +2,11 @@ use crate::core_models::entities::BlockPosition;
 
 #[derive(Debug, PartialEq)]
 pub enum InternalEvent {
+    BlockDownloaded(BlockPosition, Vec<u8>),
     BlockStored(BlockPosition),
-    PieceStored(usize),
     DownloadComplete,
+    EndGameEnabled,
+    PieceStored(usize),
 }
 
 impl InternalEvent {
