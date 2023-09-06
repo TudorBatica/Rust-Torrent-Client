@@ -3,7 +3,7 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use crate::config;
 use crate::core_models::entities::{Bitfield, BlockPosition, Message};
 use crate::core_models::events::InternalEvent;
-use crate::core_models::events::InternalEvent::BlockDownloaded;
+use crate::file_provider::FileProvider;
 use crate::p2p::connection::{PeerReceiver, PeerSender};
 use crate::piece_picker::{PickResult, PiecePicker};
 use crate::state::PeerTransferState;
@@ -26,6 +26,7 @@ enum InboundData {
 }
 
 pub async fn run(mut state: PeerTransferState,
+                 mut file_provider: Box<dyn FileProvider>,
                  read_conn: Box<dyn PeerReceiver>,
                  mut write_conn: Box<dyn PeerSender>,
                  mut events_tx: Sender<InternalEvent>,
@@ -40,7 +41,7 @@ pub async fn run(mut state: PeerTransferState,
                 event, &mut state, &mut write_conn,
             ).await,
             InboundData::PeerMessage(message) => handle_peer_message(
-                message, &mut state, &mut write_conn, &mut events_tx,
+                message, &mut state, &mut write_conn, &mut events_tx, &mut file_provider,
             ).await
         };
     }
@@ -71,7 +72,8 @@ async fn recv_events(mut events_rx: Receiver<InboundEvent>, tx: Sender<InboundDa
 async fn handle_peer_message(message: Message,
                              state: &mut PeerTransferState,
                              write_conn: &mut Box<dyn PeerSender>,
-                             events_tx: &mut Sender<InternalEvent>) {
+                             events_tx: &mut Sender<InternalEvent>,
+                             file_provider: &mut Box<dyn FileProvider>) {
     match message {
         Message::KeepAlive => {
             println!("Received KEEP ALIVE message");
@@ -116,9 +118,12 @@ async fn handle_peer_message(message: Message,
                 return;
             }
             if state.peer_is_choked || !state.peer_is_interested {
+                println!("Received a bad REQUEST message: peer choked: {}, interested: {}", state.peer_is_choked, state.peer_is_interested);
                 return;
             }
-            //todo: serve request
+            let offset = state.torrent_layout.head_pieces_length * piece_idx + begin;
+            let data = file_provider.read(offset, length).await;
+            write_conn.send(Message::Piece(piece_idx, begin, data)).await.unwrap();
         }
         Message::Piece(piece_idx, begin, bytes) => {
             println!("Received PIECE message: {} {} ", piece_idx, begin);
@@ -128,14 +133,14 @@ async fn handle_peer_message(message: Message,
                 offset: begin,
                 length: bytes.len(),
             };
-            events_tx.send(BlockDownloaded(block, bytes)).await.unwrap();
+            events_tx.send(InternalEvent::BlockDownloaded(block, bytes)).await.unwrap();
             update_clients_interested_status(state, write_conn).await;
             request_blocks(state, write_conn, events_tx).await;
         }
         Message::Cancel(piece_idx, begin, length) => {
-            println!("Received CANCEL message: {} {} {}", piece_idx, begin, length);
-            // the client serves the `REQUEST` messages as soon as it gets them, so nothing else
+            // the client serves the `REQUEST` messages as soon as it gets them, so nothing
             // needs to be done here
+            println!("Received CANCEL message: {} {} {}", piece_idx, begin, length);
         }
         Message::Port(port) => {
             println!("Received PORT message: {}", port);

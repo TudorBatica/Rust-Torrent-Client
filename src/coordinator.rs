@@ -55,7 +55,11 @@ pub async fn run(torrent: Torrent, tracker_response: TrackerResponse, client_con
     let p2p_transfer_tasks: Vec<JoinHandle<()>> = tracker_response.peers.into_iter().map(|peer| {
         let client_id = client_config.client_id.clone();
         let info_hash = torrent.info_hash.clone();
-        let (peer_transfer_state, channel) = state::register_new_peer_transfer(&mut transfer_state);
+        let file_name = torrent.info.name.clone();
+        let layout = torrent_layout.clone();
+        let (
+            peer_transfer_state, channel
+        ) = state::register_new_peer_transfer(&mut transfer_state, layout);
 
         return tokio::spawn(async move {
             let (read_conn, write_conn) = match p2p::connection::connect(peer, info_hash, client_id).await {
@@ -65,8 +69,17 @@ pub async fn run(torrent: Torrent, tracker_response: TrackerResponse, client_con
                     return;
                 }
             };
+            let file = OpenOptions::new()
+                .write(false)
+                .create(false)
+                .truncate(false)
+                .open(file_name.as_str())
+                .await
+                .unwrap();
+            let file_provider = TokioFileProvider::new(file);
             match transfer::run(
                 peer_transfer_state,
+                Box::new(file_provider),
                 Box::new(read_conn),
                 Box::new(write_conn),
                 channel.0,

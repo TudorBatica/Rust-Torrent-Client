@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::sync::mpsc::{Receiver, Sender};
-use crate::core_models::entities::Bitfield;
+use crate::core_models::entities::{Bitfield, TorrentLayout};
 use crate::core_models::events::InternalEvent;
 use crate::metadata::Torrent;
 use crate::p2p::transfer::InboundEvent;
@@ -37,6 +37,7 @@ impl CoordinatorTransferState {
 
 pub struct PeerTransferState {
     pub transfer_idx: usize,
+    pub torrent_layout: TorrentLayout,
     pub client_bitfield: Bitfield,
     pub peer_bitfield: Bitfield,
     pub client_is_choked: bool,
@@ -45,15 +46,15 @@ pub struct PeerTransferState {
     pub peer_is_interested: bool,
     pub ongoing_requests: HashSet<(usize, usize, usize)>,
     pub piece_picker: Arc<Mutex<RarestPiecePicker>>,
-    pub download_file_name: String,
 }
 
-pub fn register_new_peer_transfer(coordinator_state: &mut CoordinatorTransferState)
+pub fn register_new_peer_transfer(coordinator_state: &mut CoordinatorTransferState, layout: TorrentLayout)
                                   -> (PeerTransferState, (Sender<InternalEvent>, Receiver<InboundEvent>)) {
     // create channel for coordinator task -> peer p2p task communication
     let (tx, rx) = mpsc::channel::<InboundEvent>(512);
     let peer_transfer_state = PeerTransferState {
         transfer_idx: 0,
+        torrent_layout: layout,
         client_bitfield: coordinator_state.bitfield.clone(),
         peer_bitfield: Bitfield::init(coordinator_state.pieces_count),
         client_is_choked: true,
@@ -62,7 +63,6 @@ pub fn register_new_peer_transfer(coordinator_state: &mut CoordinatorTransferSta
         peer_is_interested: false,
         ongoing_requests: HashSet::new(),
         piece_picker: coordinator_state.piece_picker.clone(),
-        download_file_name: coordinator_state.download_file_name.clone(),
     };
     coordinator_state.txs_to_peers.insert(coordinator_state.next_peer_transfer_idx, tx);
     coordinator_state.next_peer_transfer_idx += 1;
