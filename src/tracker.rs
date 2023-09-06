@@ -1,5 +1,5 @@
 use crate::config::Config;
-use crate::metadata::Torrent;
+use crate::core_models::entities::Torrent;
 use form_urlencoded::byte_serialize;
 use serde::Deserialize;
 use serde_derive::Deserialize;

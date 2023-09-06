@@ -1,9 +1,9 @@
-use crate::core_models::entities::BlockPosition;
+use crate::core_models::entities::Block;
 
 #[derive(Debug, PartialEq)]
 pub enum InternalEvent {
-    BlockDownloaded(BlockPosition, Vec<u8>),
-    BlockStored(BlockPosition),
+    BlockDownloaded(Block, Vec<u8>),
+    BlockStored(Block),
     DownloadComplete,
     EndGameEnabled,
     PieceStored(usize),

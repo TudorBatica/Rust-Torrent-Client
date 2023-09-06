@@ -3,14 +3,14 @@ use std::sync::Arc;
 use sha1::{Digest, Sha1};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
-use crate::core_models::entities::{BlockPosition, TorrentLayout};
+use crate::core_models::entities::{Block, TorrentLayout};
 use crate::core_models::events::InternalEvent;
 use crate::file_provider::FileProvider;
 use crate::piece_picker::PiecePicker;
 
 pub struct DataCollectorState {
     pub acquired_pieces: usize,
-    pub written_data: HashMap<usize, HashSet<BlockPosition>>,
+    pub written_data: HashMap<usize, HashSet<Block>>,
 }
 
 impl DataCollectorState {
@@ -29,7 +29,7 @@ pub async fn run(piece_picker: Arc<Mutex<dyn PiecePicker>>,
                  mut file_provider: Box<dyn FileProvider>,
                  piece_hashes: Vec<Vec<u8>>,
                  layout: TorrentLayout,
-                 mut rx: Receiver<(BlockPosition, Vec<u8>)>,
+                 mut rx: Receiver<(Block, Vec<u8>)>,
                  tx: Sender<InternalEvent>) {
     let mut state = DataCollectorState::init(layout.pieces);
     while let Some((block, data)) = rx.recv().await {

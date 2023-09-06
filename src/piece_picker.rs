@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use rand::prelude::IteratorRandom;
-use crate::core_models::entities::BlockPosition;
+use crate::core_models::entities::{Block, TorrentLayout};
 use crate::core_models::entities::Bitfield;
 use async_trait::async_trait;
 use mockall::automock;
@@ -8,19 +8,8 @@ use mockall::automock;
 const ALL_BLOCKS_IN_TRANSFER_PENALTY: i32 = 100;
 
 pub struct PickResult {
-    // vector of (piece_idx, block_offset, block_length)
-    pub(crate) blocks: Vec<(usize, usize, usize)>,
-    pub(crate) end_game_mode_enabled: bool,
-}
-
-#[automock]
-pub trait PiecePicker: Send {
-    fn pick(&mut self, peer_bitfield: &Bitfield, num_of_blocks: usize) -> Option<PickResult>;
-    fn increase_availability_for_piece(&mut self, piece_idx: usize);
-    fn increase_availability_for_pieces(&mut self, piece_idxs: Vec<usize>);
-    fn decrease_availability_for_pieces(&mut self, piece_idxs: Vec<usize>);
-    fn remove_block(&mut self, block: &BlockPosition);
-    fn reinsert_piece(&mut self, piece_idx: usize);
+    pub blocks: Vec<Block>,
+    pub end_game_mode_enabled: bool,
 }
 
 struct PieceDownloadState {
@@ -30,21 +19,32 @@ struct PieceDownloadState {
 }
 
 impl PieceDownloadState {
-    fn init(piece_length: usize, block_size: usize) -> Self {
+    fn init(piece_idx: usize, layout: &TorrentLayout) -> Self {
         let mut piece = PieceDownloadState {
             blocks_unrequested: HashSet::new(),
             blocks_in_transfer: HashSet::new(),
         };
 
-        let blocks = (piece_length as f64 / (block_size as f64)).ceil() as usize;
-        let last_block_len = piece_length as usize - (blocks - 1) * block_size;
+        let blocks = layout.blocks_in_piece(piece_idx);
+        let last_block_len = layout.last_block_length_for_piece(piece_idx);
+
         for block_idx in 0..blocks {
-            let len = if block_idx < blocks - 1 { block_size } else { last_block_len };
-            piece.blocks_unrequested.insert((block_idx * block_size, len));
+            let len = if block_idx < blocks - 1 { layout.usual_block_length } else { last_block_len };
+            piece.blocks_unrequested.insert((block_idx * layout.usual_block_length, len));
         }
 
         return piece;
     }
+}
+
+#[automock]
+pub trait PiecePicker: Send {
+    fn pick(&mut self, peer_bitfield: &Bitfield, num_of_blocks: usize) -> Option<PickResult>;
+    fn increase_availability_for_piece(&mut self, piece_idx: usize);
+    fn increase_availability_for_pieces(&mut self, piece_idxs: Vec<usize>);
+    fn decrease_availability_for_pieces(&mut self, piece_idxs: Vec<usize>);
+    fn remove_block(&mut self, block: &Block);
+    fn reinsert_piece(&mut self, piece_idx: usize);
 }
 
 pub struct RarestPiecePicker {
@@ -58,13 +58,12 @@ pub struct RarestPiecePicker {
 }
 
 impl RarestPiecePicker {
-    pub fn init(num_of_pieces: usize, piece_length: usize, last_piece_length: usize, block_size: usize) -> Self {
-        let priority_sorted_pieces: Vec<(usize, i32)> = (0..num_of_pieces).map(|idx| (idx, 0)).collect();
-        let piece_lookup_table: HashMap<usize, usize> = (0..num_of_pieces).map(|idx| (idx, idx)).collect();
+    pub fn init(layout: &TorrentLayout) -> Self {
+        let priority_sorted_pieces: Vec<(usize, i32)> = (0..layout.pieces).map(|idx| (idx, 0)).collect();
+        let piece_lookup_table: HashMap<usize, usize> = (0..layout.pieces).map(|idx| (idx, idx)).collect();
         let mut piece_download_state: HashMap<usize, PieceDownloadState> = HashMap::new();
-        for piece_idx in 0..num_of_pieces {
-            let piece_size = if piece_idx < num_of_pieces - 1 { piece_length } else { last_piece_length };
-            let piece = PieceDownloadState::init(piece_size, block_size);
+        for piece_idx in 0..layout.pieces {
+            let piece = PieceDownloadState::init(piece_idx, &layout);
             piece_download_state.insert(piece_idx, piece);
         }
 
@@ -77,13 +76,18 @@ impl RarestPiecePicker {
         if !blocks.is_empty() {
             piece.blocks_in_transfer.extend(blocks.clone());
             return PickResult {
-                blocks: blocks.iter().map(|(offset, length)| (piece_idx, *offset, *length)).collect(),
+                blocks: blocks.iter()
+                    .map(|(offset, length)| Block::new(piece_idx, *offset, *length)).collect(),
                 end_game_mode_enabled: false,
             };
         }
-        let block = piece.blocks_in_transfer.iter().choose(&mut rand::thread_rng()).unwrap();
+        // End Game scenario, at most one block will be picked at random
+        let blocks: Vec<Block> = piece.blocks_in_transfer.iter()
+            .choose(&mut rand::thread_rng())
+            .map_or_else(|| vec![],
+                         |block| vec![Block::new(piece_idx, block.0, block.1)]);
         return PickResult {
-            blocks: vec![(piece_idx, block.0, block.1)],
+            blocks,
             end_game_mode_enabled: true,
         };
     }
@@ -158,7 +162,7 @@ impl PiecePicker for RarestPiecePicker {
     }
 
     // returns (block_removed, piece_removed)
-    fn remove_block(&mut self, block: &BlockPosition) {
+    fn remove_block(&mut self, block: &Block) {
         if let Some(piece_state) = self.piece_download_state.get_mut(&block.piece_idx) {
             piece_state.blocks_in_transfer.remove(&(block.offset, block.length));
             if let Some(array_idx) = self.piece_lookup_table.get(&block.piece_idx) {
@@ -177,73 +181,65 @@ impl PiecePicker for RarestPiecePicker {
 mod tests {
     use crate::piece_picker::{PiecePicker, RarestPiecePicker};
     use crate::core_models::entities::Bitfield;
+    use crate::mocks;
 
     #[test]
-    fn test_picker_init() {
-        let piece_picker = RarestPiecePicker::init(5, 16384, 8192, 16);
-
-        assert_eq!(piece_picker.priority_sorted_pieces.len(), 5);
-        assert_eq!(piece_picker.piece_lookup_table.len(), 5);
-        assert_eq!(piece_picker.piece_download_state.len(), 5);
-    }
-
-    #[test]
-    fn test_pick_no_blocks_available() {
-        let mut piece_picker = RarestPiecePicker::init(3, 8192, 4096, 16);
-        let peer_bitfield = Bitfield::init(2); // initialize an all 0 bitfield
+    fn test_piece_pick_no_pieces_available() {
+        let layout = mocks::generate_mock_layout(2, 2, 2);
+        let mut piece_picker = RarestPiecePicker::init(&layout);
+        let peer_bitfield = Bitfield::init(2);
         let pick_result = piece_picker.pick(&peer_bitfield, 2);
 
         assert!(pick_result.is_none());
     }
 
     #[test]
-    fn test_pick_some_blocks_available() {
-        let mut piece_picker = RarestPiecePicker::init(3, 8192, 4096, 16);
-        let mut peer_bitfield = Bitfield::init(3);
+    fn test_piece_pick() {
+        let layout = mocks::generate_mock_layout(2, 2, 2);
+        let mut piece_picker = RarestPiecePicker::init(&layout);
+        let mut peer_bitfield = Bitfield::init(2);
+
         peer_bitfield.piece_acquired(0);
-        let pick_result = piece_picker.pick(&peer_bitfield, 10).unwrap();
-
-        assert_eq!(pick_result.end_game_mode_enabled, false);
-        assert_eq!(pick_result.blocks.len(), 10);
-        assert_eq!(pick_result.blocks[0].0, 0);
-    }
-
-    #[test]
-    fn test_availability_updates() {
-        let mut piece_picker = RarestPiecePicker::init(4, 8, 8, 1);
-        piece_picker.increase_availability_for_piece(1);
-        piece_picker.increase_availability_for_piece(1);
-        piece_picker.increase_availability_for_piece(1);
-
-        piece_picker.increase_availability_for_piece(2);
-        piece_picker.increase_availability_for_piece(2);
-
-        piece_picker.increase_availability_for_piece(0);
-        piece_picker.increase_availability_for_piece(0);
-
-        piece_picker.increase_availability_for_piece(3);
-
-        assert_eq!(piece_picker.priority_sorted_pieces[0].0, 3);
-        assert_eq!(
-            piece_picker.priority_sorted_pieces[1].0 == 2 || piece_picker.priority_sorted_pieces[1].0 == 0,
-            true
-        );
-        assert_eq!(piece_picker.priority_sorted_pieces[3].0, 1);
-
-        piece_picker.decrease_availability_for_pieces(vec![0]);
-        piece_picker.decrease_availability_for_pieces(vec![0]);
-        assert_eq!(piece_picker.priority_sorted_pieces[0].0, 0);
-    }
-
-    #[test]
-    fn test_pick_end_game_mode() {
-        let mut piece_picker = RarestPiecePicker::init(1, 8, 8, 4);
-        let mut peer_bitfield = Bitfield::init(1);
-        peer_bitfield.piece_acquired(0);
-        piece_picker.pick(&peer_bitfield, 2).unwrap();
         let pick_result = piece_picker.pick(&peer_bitfield, 2).unwrap();
 
-        assert_eq!(pick_result.end_game_mode_enabled, true);
+        println!("{:?}", pick_result.blocks);
+        assert_eq!(pick_result.blocks.len(), 2);
+        assert_eq!(pick_result.blocks[0].piece_idx, pick_result.blocks[1].piece_idx);
+        assert_eq!(pick_result.end_game_mode_enabled, false);
+    }
+
+    #[test]
+    fn test_piece_pick_rarest_picked_first() {
+        let layout = mocks::generate_mock_layout(2, 2, 2);
+        let mut piece_picker = RarestPiecePicker::init(&layout);
+        let mut peer_bitfield = Bitfield::init(2);
+
+        peer_bitfield.piece_acquired(0);
+        peer_bitfield.piece_acquired(1);
+        piece_picker.increase_availability_for_piece(0);
+        let pick_result = piece_picker.pick(&peer_bitfield, 2).unwrap();
+
+        assert_eq!(pick_result.blocks.len(), 2);
+        assert_eq!(pick_result.blocks[0].piece_idx, 1);
+        assert_eq!(pick_result.blocks[1].piece_idx, 1);
+    }
+
+    #[test]
+    fn test_piece_pick_end_game_mode() {
+        let layout = mocks::generate_mock_layout(2, 2, 2);
+        let mut piece_picker = RarestPiecePicker::init(&layout);
+        let mut peer_1 = Bitfield::init(2);
+        let mut peer_2 = Bitfield::init(2);
+
+        peer_1.piece_acquired(0);
+        piece_picker.pick(&peer_1, 2).unwrap();
+        peer_2.piece_acquired(1);
+        piece_picker.pick(&peer_1, 2).unwrap();
+
+        peer_1.piece_acquired(1);
+        let pick_result = piece_picker.pick(&peer_1, 2).unwrap();
+
         assert_eq!(pick_result.blocks.len(), 1);
+        assert_eq!(pick_result.end_game_mode_enabled, true);
     }
 }

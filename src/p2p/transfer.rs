@@ -1,7 +1,7 @@
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use crate::config;
-use crate::core_models::entities::{Bitfield, BlockPosition, Message};
+use crate::core_models::entities::{Bitfield, Block, Message};
 use crate::core_models::events::InternalEvent;
 use crate::file_provider::FileProvider;
 use crate::p2p::connection::{PeerReceiver, PeerSender};
@@ -15,7 +15,7 @@ pub enum P2PTransferError {}
 
 // Events that can be received by a p2p transfer task
 pub enum InboundEvent {
-    BlockAcquired(BlockPosition),
+    BlockAcquired(Block),
     PieceAcquired(usize),
 }
 
@@ -111,9 +111,9 @@ async fn handle_peer_message(message: Message,
             update_clients_interested_status(state, write_conn).await;
             request_blocks(state, write_conn, events_tx).await;
         }
-        Message::Request(piece_idx, begin, length) => {
-            println!("Received REQUEST message: {} {} {}", piece_idx, begin, length);
-            if length > config::BLOCK_SIZE_BYTES {
+        Message::Request(block) => {
+            println!("Received REQUEST message: {} {} {}", block.piece_idx, block.offset, block.length);
+            if block.length > config::BLOCK_SIZE_BYTES {
                 println!("Received a REQUEST message with a length exceeding 16kb!");
                 return;
             }
@@ -121,14 +121,14 @@ async fn handle_peer_message(message: Message,
                 println!("Received a bad REQUEST message: peer choked: {}, interested: {}", state.peer_is_choked, state.peer_is_interested);
                 return;
             }
-            let offset = state.torrent_layout.head_pieces_length * piece_idx + begin;
-            let data = file_provider.read(offset, length).await;
-            write_conn.send(Message::Piece(piece_idx, begin, data)).await.unwrap();
+            let absolute_offset = state.torrent_layout.head_pieces_length * block.piece_idx + block.offset;
+            let data = file_provider.read(absolute_offset, block.length).await;
+            write_conn.send(Message::Piece(block.piece_idx, block.offset, data)).await.unwrap();
         }
         Message::Piece(piece_idx, begin, bytes) => {
             println!("Received PIECE message: {} {} ", piece_idx, begin);
-            state.ongoing_requests.remove(&(piece_idx, begin, bytes.len()));
-            let block = BlockPosition {
+            state.ongoing_requests.remove(&Block::new(piece_idx, begin, bytes.len()));
+            let block = Block {
                 piece_idx,
                 offset: begin,
                 length: bytes.len(),
@@ -137,10 +137,10 @@ async fn handle_peer_message(message: Message,
             update_clients_interested_status(state, write_conn).await;
             request_blocks(state, write_conn, events_tx).await;
         }
-        Message::Cancel(piece_idx, begin, length) => {
+        Message::Cancel(block) => {
             // the client serves the `REQUEST` messages as soon as it gets them, so nothing
             // needs to be done here
-            println!("Received CANCEL message: {} {} {}", piece_idx, begin, length);
+            println!("Received CANCEL message: {:?}", block);
         }
         Message::Port(port) => {
             println!("Received PORT message: {}", port);
@@ -151,8 +151,8 @@ async fn handle_peer_message(message: Message,
 async fn handle_event(event: InboundEvent, state: &mut PeerTransferState, write_conn: &mut Box<dyn PeerSender>) {
     match event {
         InboundEvent::BlockAcquired(block) => {
-            state.ongoing_requests.remove(&(block.piece_idx, block.offset, block.length));
-            write_conn.send(Message::Cancel(block.piece_idx, block.offset, block.length)).await.unwrap();
+            state.ongoing_requests.remove(&block);
+            write_conn.send(Message::Cancel(block)).await.unwrap();
         }
         InboundEvent::PieceAcquired(piece_idx) => {
             state.client_bitfield.piece_acquired(piece_idx);
@@ -187,9 +187,9 @@ async fn request_blocks(state: &mut PeerTransferState,
         picker.pick(&state.peer_bitfield, blocks_to_request)
     };
     if let Some(pick) = pick_result {
-        state.ongoing_requests.extend(pick.blocks.iter());
+        state.ongoing_requests.extend(pick.blocks.clone().into_iter());
         for block in pick.blocks {
-            write_conn.send(Message::Request(block.0, block.1, block.2)).await.unwrap();
+            write_conn.send(Message::Request(block)).await.unwrap();
         }
         if pick.end_game_mode_enabled {
             events_tx.send(InternalEvent::EndGameEnabled).await.unwrap();

@@ -1,10 +1,64 @@
-//todo: replace all usages of (usize, usize, usize) w/ block
+use serde_derive::{Deserialize, Serialize};
+use serde_bytes::ByteBuf;
+use crate::config;
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct File {
+    length: u64,
+    path: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Info {
+    #[serde(default)]
+    pub files: Option<Vec<File>>,
+    #[serde(default)]
+    pub length: Option<u64>,
+    pub name: String,
+    #[serde(default)]
+    pub path: Option<Vec<String>>,
+    pub pieces: ByteBuf,
+    #[serde(rename = "piece length")]
+    pub piece_length: u64,
+    #[serde(default)]
+    pub private: Option<u8>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Torrent {
+    pub info: Info,
+    #[serde(default)]
+    pub announce: String,
+    #[serde(default)]
+    #[serde(rename = "announce-list")]
+    pub announce_list: Option<Vec<Vec<String>>>,
+    #[serde(default)]
+    #[serde(rename = "creation date")]
+    pub creation_date: Option<u64>,
+    #[serde(rename = "comment")]
+    pub comment: Option<String>,
+    #[serde(default)]
+    #[serde(rename = "created by")]
+    pub created_by: Option<String>,
+    #[serde(default)]
+    pub encoding: Option<String>,
+    #[serde(default)]
+    pub info_hash: Vec<u8>,
+    #[serde(skip)]
+    pub piece_hashes: Vec<Vec<u8>>,
+}
 
 #[derive(Clone, Default, Debug, Eq, Hash, PartialEq)]
-pub struct BlockPosition {
+pub struct Block {
     pub piece_idx: usize,
     pub offset: usize,
     pub length: usize,
+}
+
+impl Block {
+    pub fn new(piece_idx: usize, offset: usize, length: usize) -> Self {
+        return Block { piece_idx, offset, length };
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -20,6 +74,30 @@ pub struct TorrentLayout {
 }
 
 impl TorrentLayout {
+    pub fn from_torrent(torrent: &Torrent) -> Self {
+        let total_length = torrent.info.length.expect("only single file torrents supported") as usize;
+        let pieces = torrent.piece_hashes.len();
+        let head_pieces_length = torrent.info.piece_length as usize;
+        let last_piece_length = total_length - head_pieces_length * (pieces - 1);
+
+        let usual_block_length = config::BLOCK_SIZE_BYTES;
+        let blocks_in_head_pieces = (head_pieces_length as f64 / (usual_block_length as f64)).ceil() as usize;
+        let blocks_in_last_piece = (last_piece_length as f64 / (usual_block_length as f64)).ceil() as usize;
+        let head_pieces_last_block_length = head_pieces_length - (blocks_in_head_pieces - 1) * config::BLOCK_SIZE_BYTES;
+        let last_piece_last_block_length = last_piece_length as usize - (blocks_in_last_piece as usize - 1) * config::BLOCK_SIZE_BYTES;
+
+        return TorrentLayout {
+            pieces,
+            head_pieces_length,
+            last_piece_length,
+            blocks_in_head_pieces,
+            blocks_in_last_piece,
+            usual_block_length,
+            head_pieces_last_block_length,
+            last_piece_last_block_length,
+        };
+    }
+
     pub fn blocks_in_piece(&self, piece_idx: usize) -> usize {
         return if piece_idx == self.pieces - 1 {
             self.blocks_in_last_piece
@@ -62,13 +140,12 @@ pub enum Message {
     NotInterested,
     Have(usize),
     Bitfield(Vec<u8>),
-    Request(usize, usize, usize),
+    Request(Block),
     Piece(usize, usize, Vec<u8>),
-    Cancel(usize, usize, usize),
+    Cancel(Block),
     Port(usize),
 }
 
-//todo: add tests
 impl Message {
     pub fn deserialize(bytes: Vec<u8>) -> Option<Self> {
         match bytes[0] {
@@ -82,10 +159,10 @@ impl Message {
             }
             5 => Some(Message::Bitfield(bytes[1..].to_vec())),
             6 => {
-                let index = Self::usize_from_be_bytes(bytes[1..5].to_vec());
-                let begin = Self::usize_from_be_bytes(bytes[5..9].to_vec());
+                let piece_idx = Self::usize_from_be_bytes(bytes[1..5].to_vec());
+                let offset = Self::usize_from_be_bytes(bytes[5..9].to_vec());
                 let length = Self::usize_from_be_bytes(bytes[9..13].to_vec());
-                return Some(Message::Request(index, begin, length));
+                return Some(Message::Request(Block::new(piece_idx, offset, length)));
             }
             7 => {
                 let index = Self::usize_from_be_bytes(bytes[1..5].to_vec());
@@ -93,10 +170,10 @@ impl Message {
                 return Some(Message::Piece(index, begin, bytes[9..].to_vec()));
             }
             8 => {
-                let index = Self::usize_from_be_bytes(bytes[1..5].to_vec());
-                let begin = Self::usize_from_be_bytes(bytes[5..9].to_vec());
+                let piece_idx = Self::usize_from_be_bytes(bytes[1..5].to_vec());
+                let offset = Self::usize_from_be_bytes(bytes[5..9].to_vec());
                 let length = Self::usize_from_be_bytes(bytes[9..13].to_vec());
-                return Some(Message::Cancel(index, begin, length));
+                return Some(Message::Request(Block::new(piece_idx, offset, length)));
             }
             9 => {
                 let port = Self::usize_from_be_bytes(bytes[1..].to_vec());
@@ -122,11 +199,11 @@ impl Message {
                 bytes.push(5);
                 bytes.extend(bitfield.into_iter());
             }
-            Message::Request(index, offset, length) => {
+            Message::Request(block) => {
                 bytes.push(6);
-                bytes.append(&mut Self::usize_to_four_be_bytes(*index));
-                bytes.append(&mut Self::usize_to_four_be_bytes(*offset));
-                bytes.append(&mut Self::usize_to_four_be_bytes(*length));
+                bytes.append(&mut Self::usize_to_four_be_bytes(block.piece_idx));
+                bytes.append(&mut Self::usize_to_four_be_bytes(block.offset));
+                bytes.append(&mut Self::usize_to_four_be_bytes(block.length));
             }
             Message::Piece(index, offset, block) => {
                 bytes.push(7);
@@ -134,11 +211,11 @@ impl Message {
                 bytes.append(&mut Self::usize_to_four_be_bytes(*offset));
                 bytes.extend(block.into_iter());
             }
-            Message::Cancel(index, offset, length) => {
+            Message::Cancel(block) => {
                 bytes.push(8);
-                bytes.append(&mut Self::usize_to_four_be_bytes(*index));
-                bytes.append(&mut Self::usize_to_four_be_bytes(*offset));
-                bytes.append(&mut Self::usize_to_four_be_bytes(*length));
+                bytes.append(&mut Self::usize_to_four_be_bytes(block.piece_idx));
+                bytes.append(&mut Self::usize_to_four_be_bytes(block.offset));
+                bytes.append(&mut Self::usize_to_four_be_bytes(block.length));
             }
             Message::Port(port) => {
                 bytes.push(9);

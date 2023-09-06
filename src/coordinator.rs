@@ -7,8 +7,8 @@ use tokio::task::JoinHandle;
 use crate::{config, data_collector, p2p, state};
 use crate::config::Config;
 use crate::coordinator::TransferError::TransferInitializationError;
-use crate::metadata::Torrent;
-use crate::core_models::entities::{BlockPosition, TorrentLayout};
+use crate::core_models::entities::Torrent;
+use crate::core_models::entities::{Block, TorrentLayout};
 use crate::file_provider::TokioFileProvider;
 use crate::p2p::transfer;
 use crate::tracker::TrackerResponse;
@@ -21,27 +21,17 @@ pub enum TransferError {
 
 pub async fn run(torrent: Torrent, tracker_response: TrackerResponse, client_config: &Config) -> Result<(), TransferError> {
     start_listener(client_config).await;
-    //todo: compute torrent layout and send it to components which require it
-    let torrent_layout = TorrentLayout {
-        pieces: 0,
-        head_pieces_length: 0,
-        last_piece_length: 0,
-        usual_block_length: 0,
-        head_pieces_last_block_length: 0,
-        last_piece_last_block_length: 0,
-        blocks_in_head_pieces: 0,
-        blocks_in_last_piece: 0,
-    };
-    let picker = init_piece_picker(&torrent);
+    let layout = TorrentLayout::from_torrent(&torrent);
+    let picker = Arc::new(Mutex::new(RarestPiecePicker::init(&layout)));
     let mut transfer_state = CoordinatorTransferState::init(&torrent, picker);
 
     // initialize ipc channels
-    let (tx_to_assembler, rx_assembler) = mpsc::channel::<(BlockPosition, Vec<u8>)>(128);
+    let (tx_to_assembler, rx_assembler) = mpsc::channel::<(Block, Vec<u8>)>(128);
 
     //todo: create cancellation tokens
     let assembler_task = spawn_data_collector(
         &torrent,
-        torrent_layout.clone(),
+        layout.clone(),
         &transfer_state,
         rx_assembler,
     ).await?;
@@ -56,7 +46,7 @@ pub async fn run(torrent: Torrent, tracker_response: TrackerResponse, client_con
         let client_id = client_config.client_id.clone();
         let info_hash = torrent.info_hash.clone();
         let file_name = torrent.info.name.clone();
-        let layout = torrent_layout.clone();
+        let layout = layout.clone();
         let (
             peer_transfer_state, channel
         ) = state::register_new_peer_transfer(&mut transfer_state, layout);
@@ -99,22 +89,10 @@ pub async fn run(torrent: Torrent, tracker_response: TrackerResponse, client_con
     return Ok(());
 }
 
-fn init_piece_picker(torrent: &Torrent) -> Arc<Mutex<RarestPiecePicker>> {
-    let last_piece_len = torrent.info.length.expect("only single file torrents supported")
-        - (torrent.info.piece_length * torrent.piece_hashes.len() as u64 - 1);
-    let picker = RarestPiecePicker::init(
-        torrent.piece_hashes.len(),
-        torrent.info.piece_length as usize,
-        last_piece_len as usize,
-        config::BLOCK_SIZE_BYTES,
-    );
-    return Arc::new(Mutex::new(picker));
-}
-
 async fn spawn_data_collector(torrent: &Torrent,
                               torrent_layout: TorrentLayout,
                               transfer_state: &CoordinatorTransferState,
-                              rx: Receiver<(BlockPosition, Vec<u8>)>) -> Result<JoinHandle<()>, TransferError> {
+                              rx: Receiver<(Block, Vec<u8>)>) -> Result<JoinHandle<()>, TransferError> {
     let file = OpenOptions::new()
         .write(true)
         .create(true)

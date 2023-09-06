@@ -2,9 +2,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use tokio::sync::mpsc::{Receiver, Sender};
-use crate::core_models::entities::{Bitfield, TorrentLayout};
+use crate::core_models::entities::{Bitfield, Block, TorrentLayout};
 use crate::core_models::events::InternalEvent;
-use crate::metadata::Torrent;
+use crate::core_models::entities::Torrent;
 use crate::p2p::transfer::InboundEvent;
 use crate::piece_picker::RarestPiecePicker;
 
@@ -44,7 +44,7 @@ pub struct PeerTransferState {
     pub peer_is_choked: bool,
     pub client_is_interested: bool,
     pub peer_is_interested: bool,
-    pub ongoing_requests: HashSet<(usize, usize, usize)>,
+    pub ongoing_requests: HashSet<Block>,
     pub piece_picker: Arc<Mutex<RarestPiecePicker>>,
 }
 

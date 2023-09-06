@@ -1,53 +1,6 @@
-use serde_derive::{Deserialize, Serialize};
-use serde_bytes::ByteBuf;
 use std::fs;
 use sha1::{Digest, Sha1};
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct File {
-    length: u64,
-    path: Vec<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Info {
-    #[serde(default)]
-    pub files: Option<Vec<File>>,
-    #[serde(default)]
-    pub length: Option<u64>,
-    pub name: String,
-    #[serde(default)]
-    pub path: Option<Vec<String>>,
-    pub pieces: ByteBuf,
-    #[serde(rename = "piece length")]
-    pub piece_length: u64,
-    #[serde(default)]
-    pub private: Option<u8>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Torrent {
-    pub info: Info,
-    #[serde(default)]
-    pub announce: String,
-    #[serde(default)]
-    #[serde(rename = "announce-list")]
-    pub announce_list: Option<Vec<Vec<String>>>,
-    #[serde(default)]
-    #[serde(rename = "creation date")]
-    pub creation_date: Option<u64>,
-    #[serde(rename = "comment")]
-    pub comment: Option<String>,
-    #[serde(default)]
-    #[serde(rename = "created by")]
-    pub created_by: Option<String>,
-    #[serde(default)]
-    pub encoding: Option<String>,
-    #[serde(default)]
-    pub info_hash: Vec<u8>,
-    #[serde(skip)]
-    pub piece_hashes: Vec<Vec<u8>>,
-}
+use crate::core_models::entities::Torrent;
 
 pub fn parse_torrent(file_path: &str) -> Result<Torrent, Box<dyn std::error::Error>> {
     let file = fs::read(file_path)?;
@@ -61,7 +14,7 @@ pub fn parse_torrent(file_path: &str) -> Result<Torrent, Box<dyn std::error::Err
 
 #[cfg(test)]
 mod tests {
-    use crate::metadata::parse_torrent;
+    use crate::parser::parse_torrent;
 
     #[test]
     pub fn test_torrent_parse() {

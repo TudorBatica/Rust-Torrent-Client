@@ -3,7 +3,7 @@ use rust_torrent_client;
 use std::sync::Arc;
 use tokio::sync::mpsc::{channel};
 use tokio::sync::Mutex;
-use rust_torrent_client::core_models::entities::{BlockPosition};
+use rust_torrent_client::core_models::entities::{Block};
 use rust_torrent_client::core_models::events::InternalEvent;
 use rust_torrent_client::file_provider::StdFileProvider;
 use rust_torrent_client::mocks::MockTorrent;
@@ -20,7 +20,7 @@ async fn test_complete_download() {
     piece_picker.expect_reinsert_piece().returning(|_| ());
 
     // init channels
-    let (in_tx, in_rx) = channel::<(BlockPosition, Vec<u8>)>(32);
+    let (in_tx, in_rx) = channel::<(Block, Vec<u8>)>(32);
     let (out_tx, mut out_rx) = channel::<InternalEvent>(32);
 
     // spawn task
@@ -43,7 +43,7 @@ async fn test_complete_download() {
         if piece_idx == torrent.layout.pieces - 1 {
             let blocks_count = torrent.layout.blocks_in_piece(piece_idx);
             for block_idx in 0..blocks_count {
-                let block_pos: BlockPosition = torrent.pieces[piece_idx][block_idx].clone();
+                let block_pos: Block = torrent.pieces[piece_idx][block_idx].clone();
                 let block_data = torrent.block_data(0, block_idx);
                 in_tx.send((block_pos, block_data)).await.unwrap();
             }
@@ -51,7 +51,7 @@ async fn test_complete_download() {
 
         let blocks_count = torrent.layout.blocks_in_piece(piece_idx);
         for block_idx in 0..blocks_count {
-            let block_pos: BlockPosition = torrent.pieces[piece_idx][block_idx].clone();
+            let block_pos: Block = torrent.pieces[piece_idx][block_idx].clone();
             let block_data = torrent.block_data(piece_idx, block_idx);
             in_tx.send((block_pos, block_data)).await.unwrap();
         }

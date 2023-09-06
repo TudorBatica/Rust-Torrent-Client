@@ -1,5 +1,5 @@
 pub mod config;
-pub mod metadata;
+pub mod parser;
 pub mod tracker;
 pub mod piece_picker;
 pub mod coordinator;
