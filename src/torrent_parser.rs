@@ -14,7 +14,7 @@ pub fn parse_torrent(file_path: &str) -> Result<Torrent, Box<dyn std::error::Err
 
 #[cfg(test)]
 mod tests {
-    use crate::parser::parse_torrent;
+    use crate::torrent_parser::parse_torrent;
 
     #[test]
     pub fn test_torrent_parse() {

@@ -1,14 +1,21 @@
 use serde_derive::{Deserialize, Serialize};
 use serde_bytes::ByteBuf;
+use std::net::Ipv4Addr;
 use crate::config;
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
+pub struct Peer {
+    pub ip: Ipv4Addr,
+    pub port: u16,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct File {
     length: u64,
     path: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Info {
     #[serde(default)]
     pub files: Option<Vec<File>>,
@@ -24,7 +31,7 @@ pub struct Info {
     pub private: Option<u8>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Torrent {
     pub info: Info,
     #[serde(default)]
@@ -61,6 +68,27 @@ impl Block {
     }
 }
 
+#[derive(Clone, Default, Debug)]
+pub struct DataBlock {
+    pub piece_idx: usize,
+    pub offset: usize,
+    pub data: Vec<u8>,
+}
+
+impl DataBlock {
+    pub fn new(piece_idx: usize, offset: usize, data: Vec<u8>) -> Self {
+        return DataBlock { piece_idx, offset, data };
+    }
+
+    pub fn to_block(&self) -> Block {
+        return Block {
+            piece_idx: self.piece_idx,
+            offset: self.offset,
+            length: self.data.len(),
+        };
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct TorrentLayout {
     pub pieces: usize,
@@ -71,6 +99,8 @@ pub struct TorrentLayout {
     pub usual_block_length: usize,
     pub head_pieces_last_block_length: usize,
     pub last_piece_last_block_length: usize,
+    pub output_file_path: String,
+    pub output_file_length: usize,
 }
 
 impl TorrentLayout {
@@ -95,6 +125,8 @@ impl TorrentLayout {
             usual_block_length,
             head_pieces_last_block_length,
             last_piece_last_block_length,
+            output_file_path: torrent.info.name.clone(),
+            output_file_length: torrent.info.length.expect("only single file torrent supported") as usize,
         };
     }
 

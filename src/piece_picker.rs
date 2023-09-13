@@ -161,8 +161,8 @@ impl PiecePicker for RarestPiecePicker {
         }
     }
 
-    // returns (block_removed, piece_removed)
     fn remove_block(&mut self, block: &Block) {
+        //todo: fix
         if let Some(piece_state) = self.piece_download_state.get_mut(&block.piece_idx) {
             piece_state.blocks_in_transfer.remove(&(block.offset, block.length));
             if let Some(array_idx) = self.piece_lookup_table.get(&block.piece_idx) {

@@ -1,9 +1,11 @@
+use tokio::sync::mpsc::Sender;
 use crate::core_models::entities::Block;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum InternalEvent {
     BlockDownloaded(Block, Vec<u8>),
     BlockStored(Block),
+    DataCollectorStarted(Sender<(Block, Vec<u8>)>),
     DownloadComplete,
     EndGameEnabled,
     PieceStored(usize),

@@ -1,41 +1,16 @@
-use rust_torrent_client;
-
 use std::sync::Arc;
-use tokio::sync::mpsc::{channel};
-use tokio::sync::Mutex;
-use rust_torrent_client::core_models::entities::{Block};
+use tokio::sync::mpsc::channel;
 use rust_torrent_client::core_models::events::InternalEvent;
-use rust_torrent_client::file_provider::StdFileProvider;
-use rust_torrent_client::mocks::MockTorrent;
+use rust_torrent_client::data_collector;
+use rust_torrent_client::mocks::{MockDepsProvider, MockTorrent};
 
 #[tokio::test]
 async fn test_complete_download() {
-    // init mocks
-    let torrent = MockTorrent::generate(3, 4, 3);
-    let temp_file = tempfile::tempfile().unwrap();
-    temp_file.set_len(torrent.total_length() as u64).unwrap();
-    let file_provider = StdFileProvider::new(temp_file);
-    let mut piece_picker = rust_torrent_client::piece_picker::MockPiecePicker::new();
-    piece_picker.expect_remove_block().returning(|_| ());
-    piece_picker.expect_reinsert_piece().returning(|_| ());
+    let (output_tx, mut output_rx) = channel::<InternalEvent>(64);
+    let torrent = MockTorrent::generate(5, 10, 8);
+    let deps = MockDepsProvider::new(torrent.clone(), output_tx.clone());
 
-    // init channels
-    let (in_tx, in_rx) = channel::<(Block, Vec<u8>)>(32);
-    let (out_tx, mut out_rx) = channel::<InternalEvent>(32);
-
-    // spawn task
-    let piece_hashes = torrent.piece_hashes.clone();
-    let layout = torrent.layout.clone();
-    let handle = tokio::spawn(async move {
-        rust_torrent_client::data_collector::run(
-            Arc::new(Mutex::new(piece_picker)),
-            Box::new(file_provider),
-            piece_hashes,
-            layout,
-            in_rx,
-            out_tx,
-        ).await;
-    });
+    let (handle, tx) = data_collector::spawn(Arc::new(deps)).await;
 
     // send blocks
     for piece_idx in 0..torrent.layout.pieces {
@@ -43,25 +18,23 @@ async fn test_complete_download() {
         if piece_idx == torrent.layout.pieces - 1 {
             let blocks_count = torrent.layout.blocks_in_piece(piece_idx);
             for block_idx in 0..blocks_count {
-                let block_pos: Block = torrent.pieces[piece_idx][block_idx].clone();
-                let block_data = torrent.block_data(0, block_idx);
-                in_tx.send((block_pos, block_data)).await.unwrap();
+                let data_block = torrent.data_block(piece_idx, block_idx);
+                tx.send(data_block).await.unwrap();
             }
         }
 
         let blocks_count = torrent.layout.blocks_in_piece(piece_idx);
         for block_idx in 0..blocks_count {
-            let block_pos: Block = torrent.pieces[piece_idx][block_idx].clone();
-            let block_data = torrent.block_data(piece_idx, block_idx);
-            in_tx.send((block_pos, block_data)).await.unwrap();
+            let data_block = torrent.data_block(piece_idx, block_idx);
+            tx.send(data_block).await.unwrap();
         }
     }
-    drop(in_tx);
+
     handle.await.unwrap();
 
     // recv data and check results
     let mut output_events: Vec<InternalEvent> = Vec::new();
-    while let Some(event) = out_rx.recv().await {
+    while let Some(event) = output_rx.recv().await {
         output_events.push(event);
     }
 

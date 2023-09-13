@@ -1,13 +1,12 @@
 use async_trait::async_trait;
+use mockall::automock;
 use tokio::io;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
-use crate::tracker::Peer;
-use crate::core_models::entities::Message;
+use crate::core_models::entities::Peer;
+use crate::core_models::entities::{Message};
 
 const PROTOCOL: &'static str = "BitTorrent protocol";
-
-//todo: add docs
 
 #[derive(Debug)]
 pub enum P2PConnError {
@@ -63,13 +62,27 @@ impl PeerSender for PeerWriteConn {
     }
 }
 
-pub async fn connect(peer: Peer, info_hash: Vec<u8>, client_id: String) -> Result<(PeerReadConn, PeerWriteConn), P2PConnError> {
-    let mut tcp_stream = establish_tcp_connection(&peer).await?;
-    send_handshake(&mut tcp_stream, &peer, &info_hash, &client_id).await?;
-    receive_handshake(&mut tcp_stream, &peer).await?;
-    let (read_stream, write_stream) = io::split(tcp_stream);
+#[async_trait]
+#[automock]
+pub trait PeerConnector: Send + Sync {
+    async fn connect_to(&self, peer: Peer, info_hash: Vec<u8>, client_id: String) -> Result<(Box<dyn PeerReceiver>, Box<dyn PeerSender>), P2PConnError>;
+}
 
-    return Ok((PeerReadConn { stream: read_stream }, PeerWriteConn { stream: write_stream }));
+pub struct TCPPeerConnector {}
+
+#[async_trait]
+impl PeerConnector for TCPPeerConnector {
+    async fn connect_to(&self, peer: Peer, info_hash: Vec<u8>, client_id: String) -> Result<(Box<dyn PeerReceiver>, Box<dyn PeerSender>), P2PConnError> {
+        let mut tcp_stream = establish_tcp_connection(&peer).await?;
+        send_handshake(&mut tcp_stream, &peer, &info_hash, &client_id).await?;
+        receive_handshake(&mut tcp_stream, &peer).await?;
+
+        let (read_stream, write_stream) = io::split(tcp_stream);
+        let receiver = Box::new(PeerReadConn { stream: read_stream });
+        let sender = Box::new(PeerWriteConn { stream: write_stream });
+
+        return Ok((receiver, sender));
+    }
 }
 
 async fn establish_tcp_connection(peer: &Peer) -> Result<TcpStream, P2PConnError> {
