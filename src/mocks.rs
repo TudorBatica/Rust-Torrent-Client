@@ -64,7 +64,7 @@ impl MockTorrent {
 
             // add piece data & hash
             let piece_len = layout.piece_length(piece_idx);
-            let piece_data = vec![piece_idx as u8; piece_len]; // Mock piece data
+            let piece_data = vec![piece_idx as u8; piece_len];
             let mut hasher = Sha1::new();
             hasher.update(&piece_data);
             piece_hashes.push(hasher.finalize().to_vec());
@@ -88,7 +88,7 @@ impl MockTorrent {
 }
 
 pub struct MockDepsProvider {
-    output_temp_dir: TempDir,
+    _output_temp_dir: TempDir,
     piece_picker: Arc<Mutex<dyn PiecePicker>>,
     mock_torrent: MockTorrent,
     output_tx: Sender<InternalEvent>,
@@ -104,8 +104,8 @@ impl MockDepsProvider {
         temp_file.set_len(mock_torrent.layout.output_file_length as u64).unwrap();
         mock_torrent.layout.output_file_path = file_path;
 
-        let piece_picker = Arc::new(Mutex::new(RarestPiecePicker::init(&mock_torrent.layout)));
-        return MockDepsProvider { output_temp_dir, piece_picker, mock_torrent, output_tx };
+        let piece_picker = Arc::new(Mutex::new(RarestPiecePicker::init(mock_torrent.layout.clone())));
+        return MockDepsProvider { _output_temp_dir: output_temp_dir, piece_picker, mock_torrent, output_tx };
     }
 }
 

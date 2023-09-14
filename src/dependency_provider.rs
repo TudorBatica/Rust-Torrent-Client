@@ -34,7 +34,7 @@ impl DependencyProvider {
     pub fn init(client_config: Config,
                 torrent: Torrent, layout: TorrentLayout,
                 tx_to_coordinator: Sender<InternalEvent>) -> Self {
-        let picker = RarestPiecePicker::init(&layout);
+        let picker = RarestPiecePicker::init(layout.clone());
 
         return DependencyProvider {
             client_config,

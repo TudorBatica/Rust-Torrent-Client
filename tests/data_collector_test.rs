@@ -7,18 +7,19 @@ use rust_torrent_client::mocks::{MockDepsProvider, MockTorrent};
 #[tokio::test]
 async fn test_complete_download() {
     let (output_tx, mut output_rx) = channel::<InternalEvent>(64);
-    let torrent = MockTorrent::generate(5, 10, 8);
+    let torrent = MockTorrent::generate(4, 10, 8);
     let deps = MockDepsProvider::new(torrent.clone(), output_tx.clone());
 
     let (handle, tx) = data_collector::spawn(Arc::new(deps)).await;
 
     // send blocks
     for piece_idx in 0..torrent.layout.pieces {
-        // send bad data first for the last piece
+        // send some bad data first for the last piece
         if piece_idx == torrent.layout.pieces - 1 {
             let blocks_count = torrent.layout.blocks_in_piece(piece_idx);
             for block_idx in 0..blocks_count {
-                let data_block = torrent.data_block(piece_idx, block_idx);
+                let mut data_block = torrent.data_block(0, block_idx);
+                data_block.piece_idx = piece_idx;
                 tx.send(data_block).await.unwrap();
             }
         }
@@ -31,14 +32,13 @@ async fn test_complete_download() {
     }
 
     handle.await.unwrap();
+    drop(output_tx);
 
     // recv data and check results
     let mut output_events: Vec<InternalEvent> = Vec::new();
     while let Some(event) = output_rx.recv().await {
         output_events.push(event);
     }
-
-    println!("{:?}", output_events);
 
     assert!(output_events.pop().unwrap().is_download_complete());
     for piece_idx in (0..torrent.layout.pieces).rev() {

@@ -60,7 +60,6 @@ async fn run(deps: Arc<dyn TransferDeps>, mut rx: Receiver<DataBlock>) {
             tx.send(InternalEvent::BlockStored(data_block.to_block())).await.unwrap();
             tx.send(InternalEvent::PieceStored(piece_idx)).await.unwrap();
         }
-
         if acquired_pieces == layout.pieces {
             tx.send(InternalEvent::DownloadComplete).await.unwrap();
             break;
