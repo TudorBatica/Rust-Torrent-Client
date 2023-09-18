@@ -1,13 +1,13 @@
-use tokio::sync::mpsc::Sender;
 use crate::core_models::entities::{Block, DataBlock};
+
+pub type TransferIdx = usize;
 
 #[derive(Debug)]
 pub enum InternalEvent {
     BlockDownloaded(DataBlock),
     BlockStored(Block),
-    DataCollectorStarted(Sender<(Block, Vec<u8>)>),
     DownloadComplete,
-    EndGameEnabled,
+    EndGameEnabled(TransferIdx),
     PieceStored(usize),
 }
 
@@ -38,7 +38,7 @@ impl InternalEvent {
     }
     pub fn is_end_game_enabled(&self) -> bool {
         return match self {
-            InternalEvent::EndGameEnabled => true,
+            InternalEvent::EndGameEnabled(_) => true,
             _ => false
         };
     }

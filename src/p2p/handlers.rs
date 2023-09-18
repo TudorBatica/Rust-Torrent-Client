@@ -49,6 +49,9 @@ async fn handle_event(event: P2PInboundEvent, state: &mut P2PState) -> HandlerRe
             state.client_bitfield.piece_acquired(piece_idx);
             update_clients_interested_status(state, &mut result);
         }
+        P2PInboundEvent::EndgameEnabled => {
+            state.endgame_enabled = true;
+        }
     };
 
     return result;
@@ -144,8 +147,9 @@ async fn pick_blocks(state: &mut P2PState, result: &mut HandlerResult, picker: &
         for block in pick.blocks {
             result.msg(Message::Request(block));
         }
-        if pick.end_game_mode_enabled {
-            result.event(InternalEvent::EndGameEnabled);
+        if pick.end_game_mode_enabled && !state.endgame_enabled {
+            state.endgame_enabled = true;
+            result.event(InternalEvent::EndGameEnabled(state.transfer_idx));
         }
     }
 }
@@ -267,6 +271,7 @@ mod tests {
         assert_eq!(result.messages_for_peer.len(), pick_result.blocks.len());
         assert!(result.messages_for_peer.iter().all(|msg| msg.is_request()));
         assert_eq!(state.ongoing_requests.len(), pick_result.blocks.len());
+        assert!(state.endgame_enabled);
     }
 
     #[tokio::test]

@@ -8,25 +8,6 @@ use crate::dependency_provider::TransferDeps;
 use crate::p2p::conn::PeerReceiver;
 use crate::p2p::state::{FunnelMsg, P2PInboundEvent, P2PState, P2PTransferError};
 
-async fn recv_peer_messages(mut conn: Box<dyn PeerReceiver>, tx: Sender<FunnelMsg>) {
-    loop {
-        let message = conn.receive().await;
-        let _ = match message {
-            Ok(msg) => tx.send(FunnelMsg::PeerMessage(msg)).await.unwrap(),
-            Err(err) => {
-                println!("Problem occurred in p2p task: {:?} dropping connection...", err);
-                break;
-            }
-        };
-    }
-}
-
-async fn recv_internal_events(mut events_rx: Receiver<P2PInboundEvent>, tx: Sender<FunnelMsg>) {
-    while let Some(event) = events_rx.recv().await {
-        tx.send(FunnelMsg::InternalEvent(event)).await.unwrap();
-    }
-}
-
 pub async fn spawn(peer: Peer,
                    transfer_idx: usize,
                    client_bitfield: Bitfield,
@@ -76,4 +57,23 @@ async fn run(peer: Peer,
     }
 
     return Ok(());
+}
+
+async fn recv_peer_messages(mut conn: Box<dyn PeerReceiver>, tx: Sender<FunnelMsg>) {
+    loop {
+        let message = conn.receive().await;
+        let _ = match message {
+            Ok(msg) => tx.send(FunnelMsg::PeerMessage(msg)).await.unwrap(),
+            Err(err) => {
+                println!("Problem occurred in p2p task: {:?}", err);
+                break;
+            }
+        };
+    }
+}
+
+async fn recv_internal_events(mut events_rx: Receiver<P2PInboundEvent>, tx: Sender<FunnelMsg>) {
+    while let Some(event) = events_rx.recv().await {
+        tx.send(FunnelMsg::InternalEvent(event)).await.unwrap();
+    }
 }
