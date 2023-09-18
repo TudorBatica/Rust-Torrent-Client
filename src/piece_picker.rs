@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::hint::black_box;
 use rand::prelude::IteratorRandom;
 use crate::core_models::entities::{Block, TorrentLayout};
 use crate::core_models::entities::Bitfield;
@@ -199,8 +198,8 @@ impl PiecePicker for RarestPiecePicker {
 #[cfg(test)]
 mod tests {
     use crate::piece_picker::{PiecePicker, RarestPiecePicker};
-    use crate::core_models::entities::{Bitfield, Block};
-    use crate::{config, mocks};
+    use crate::core_models::entities::{Bitfield};
+    use crate::{mocks};
 
     #[test]
     fn test_piece_pick_no_pieces_available() {

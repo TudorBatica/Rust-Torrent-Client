@@ -13,7 +13,7 @@ async fn test_data_collection() {
     let (output_tx, mut output_rx) = channel::<InternalEvent>(64);
     let torrent = MockTorrent::generate(2, blocks_in_piece_1, blocks_in_piece_2);
     let deps = MockDepsProvider::new(torrent.clone(), output_tx.clone());
-    let (handle, tx) = data_collector::spawn(Arc::new(deps)).await;
+    let (_handle, tx) = data_collector::spawn(Arc::new(deps)).await;
 
     // send blocks for first piece
     // we should get back `blocks_in_piece_1 - 1` BlockStored events

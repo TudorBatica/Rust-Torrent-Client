@@ -1,5 +1,9 @@
 pub mod config;
-pub mod coordinator;
+
+pub mod coordinator {
+    pub mod ipc;
+    pub mod task;
+}
 
 pub mod core_models {
     pub mod entities;

@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::sync::Arc;
 use async_trait::async_trait;
 use sha1::{Digest, Sha1};
