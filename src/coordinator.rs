@@ -4,9 +4,10 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
 use crate::dependency_provider::TransferDeps;
 use crate::core_models::events::InternalEvent;
-use crate::{data_collector, p2p};
+use crate::{data_collector};
 use crate::core_models::entities::Bitfield;
-use crate::p2p::P2PTransferError;
+use crate::p2p::{state, task};
+use crate::p2p::state::P2PTransferError;
 
 pub enum TransferError {
     TrackerCallFailed(String),
@@ -28,9 +29,9 @@ pub async fn run(deps: Arc<dyn TransferDeps>, mut rx: Receiver<InternalEvent>) -
     // spawn tasks
     let (data_collector_handle, data_collector_tx) = data_collector::spawn(deps.clone()).await;
     let mut p2p_handles: HashMap<usize, JoinHandle<Result<(), P2PTransferError>>> = HashMap::new();
-    let mut p2p_tx: HashMap<usize, Sender<p2p::InboundEvent>> = HashMap::new();
+    let mut p2p_tx: HashMap<usize, Sender<state::P2PInboundEvent>> = HashMap::new();
     for (transfer_idx, peer) in tracker_resp.peers.into_iter().enumerate() {
-        let (handle, tx) = p2p::spawn(
+        let (handle, tx) = task::spawn(
             peer, transfer_idx, client_bitfield.clone(), deps.clone(),
         ).await;
         p2p_handles.insert(transfer_idx, handle);
@@ -40,7 +41,7 @@ pub async fn run(deps: Arc<dyn TransferDeps>, mut rx: Receiver<InternalEvent>) -
     // broadcast incoming events
     while let Some(event) = rx.recv().await {
         match event {
-            InternalEvent::BlockDownloaded(_, _) => {}
+            InternalEvent::BlockDownloaded(_) => {}
             InternalEvent::BlockStored(_) => {}
             InternalEvent::DataCollectorStarted(_) => {}
             InternalEvent::DownloadComplete => {}

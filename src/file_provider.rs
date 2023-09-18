@@ -1,8 +1,10 @@
-use std::io::{Read, Seek, SeekFrom, Write};
 use async_trait::async_trait;
+use mockall::automock;
+use std::io::{Read, Seek, SeekFrom, Write};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use crate::core_models::entities::{Block, TorrentLayout};
 
+#[automock]
 #[async_trait]
 pub trait FileProv: Send {
     async fn open_read_write_instance(&mut self);

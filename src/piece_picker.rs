@@ -9,6 +9,7 @@ use mockall::automock;
 const ALL_BLOCKS_IN_TRANSFER_PENALTY: i32 = 100;
 const ALL_BLOCKS_REMOVED_PENALTY: i32 = 50000;
 
+#[derive(Clone, Default)]
 pub struct PickResult {
     pub blocks: Vec<Block>,
     pub end_game_mode_enabled: bool,

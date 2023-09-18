@@ -173,7 +173,7 @@ pub enum Message {
     Have(usize),
     Bitfield(Vec<u8>),
     Request(Block),
-    Piece(usize, usize, Vec<u8>),
+    Piece(DataBlock),
     Cancel(Block),
     Port(usize),
 }
@@ -199,7 +199,7 @@ impl Message {
             7 => {
                 let index = Self::usize_from_be_bytes(bytes[1..5].to_vec());
                 let begin = Self::usize_from_be_bytes(bytes[5..9].to_vec());
-                return Some(Message::Piece(index, begin, bytes[9..].to_vec()));
+                return Some(Message::Piece(DataBlock::new(index, begin, bytes[9..].to_vec())));
             }
             8 => {
                 let piece_idx = Self::usize_from_be_bytes(bytes[1..5].to_vec());
@@ -237,11 +237,11 @@ impl Message {
                 bytes.append(&mut Self::usize_to_four_be_bytes(block.offset));
                 bytes.append(&mut Self::usize_to_four_be_bytes(block.length));
             }
-            Message::Piece(index, offset, block) => {
+            Message::Piece(data_block) => {
                 bytes.push(7);
-                bytes.append(&mut Self::usize_to_four_be_bytes(*index));
-                bytes.append(&mut Self::usize_to_four_be_bytes(*offset));
-                bytes.extend(block.into_iter());
+                bytes.append(&mut Self::usize_to_four_be_bytes(data_block.piece_idx));
+                bytes.append(&mut Self::usize_to_four_be_bytes(data_block.offset));
+                bytes.extend(data_block.data.iter());
             }
             Message::Cancel(block) => {
                 bytes.push(8);
@@ -256,6 +256,34 @@ impl Message {
         }
 
         return bytes;
+    }
+
+    pub fn is_interested(&self) -> bool {
+        return match self {
+            Message::Interested => true,
+            _ => false
+        };
+    }
+
+    pub fn is_not_interested(&self) -> bool {
+        return match self {
+            Message::NotInterested => true,
+            _ => false
+        };
+    }
+
+    pub fn is_request(&self) -> bool {
+        return match self {
+            Message::Request(_) => true,
+            _ => false
+        };
+    }
+
+    pub fn is_piece(&self) -> bool {
+        return match self {
+            Message::Piece(_) => true,
+            _ => false
+        };
     }
 
     fn usize_from_be_bytes(bytes: Vec<u8>) -> usize {
@@ -276,9 +304,9 @@ impl Message {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Bitfield {
-    content: Vec<u8>,
+    pub content: Vec<u8>,
 }
 
 impl Bitfield {

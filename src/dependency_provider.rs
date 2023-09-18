@@ -1,11 +1,11 @@
-use std::sync::{Arc};
-use tokio::sync::mpsc::{Sender};
+use std::sync::Arc;
+use tokio::sync::mpsc::Sender;
 use tokio::sync::Mutex;
 use crate::config::Config;
 use crate::core_models::entities::{Torrent, TorrentLayout};
 use crate::core_models::events::InternalEvent;
 use crate::file_provider::{FileProv, TokioFileProv};
-use crate::p2p_conn::{PeerConnector, TCPPeerConnector};
+use crate::p2p::conn::{PeerConnector, TCPPeerConnector};
 use crate::piece_picker::{PiecePicker, RarestPiecePicker};
 use crate::tracker::{TorrentTrackerClient, TrackerClient};
 

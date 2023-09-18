@@ -11,7 +11,7 @@ use crate::dependency_provider::TransferDeps;
 use crate::core_models::entities::{Block, DataBlock, TorrentLayout};
 use crate::core_models::events::InternalEvent;
 use crate::file_provider::{FileProv, TempFileProv};
-use crate::p2p_conn::PeerConnector;
+use crate::p2p::conn::PeerConnector;
 use crate::piece_picker::{PiecePicker, RarestPiecePicker};
 use crate::tracker::{TrackerClient};
 
@@ -135,7 +135,7 @@ impl TransferDeps for MockDepsProvider {
     }
 
     fn peer_connector(&self) -> Box<dyn PeerConnector> {
-        let connector = crate::p2p_conn::MockPeerConnector::new();
+        let connector = crate::p2p::conn::MockPeerConnector::new();
         return Box::new(connector);
     }
 

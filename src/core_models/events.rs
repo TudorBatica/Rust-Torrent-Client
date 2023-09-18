@@ -1,9 +1,9 @@
 use tokio::sync::mpsc::Sender;
-use crate::core_models::entities::Block;
+use crate::core_models::entities::{Block, DataBlock};
 
 #[derive(Debug)]
 pub enum InternalEvent {
-    BlockDownloaded(Block, Vec<u8>),
+    BlockDownloaded(DataBlock),
     BlockStored(Block),
     DataCollectorStarted(Sender<(Block, Vec<u8>)>),
     DownloadComplete,
@@ -12,6 +12,12 @@ pub enum InternalEvent {
 }
 
 impl InternalEvent {
+    pub fn is_block_downloaded(&self) -> bool {
+        return match self {
+            InternalEvent::BlockDownloaded(_) => true,
+            _ => false
+        };
+    }
     pub fn is_block_stored(&self) -> bool {
         return match self {
             InternalEvent::BlockStored(_) => true,
@@ -27,6 +33,12 @@ impl InternalEvent {
     pub fn is_download_complete(&self) -> bool {
         return match self {
             InternalEvent::DownloadComplete => true,
+            _ => false
+        };
+    }
+    pub fn is_end_game_enabled(&self) -> bool {
+        return match self {
+            InternalEvent::EndGameEnabled => true,
             _ => false
         };
     }

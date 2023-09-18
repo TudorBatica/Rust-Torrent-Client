@@ -1,10 +1,9 @@
+use tokio::net::TcpStream;
 use async_trait::async_trait;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use mockall::automock;
 use tokio::io;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
-use tokio::net::TcpStream;
-use crate::core_models::entities::Peer;
-use crate::core_models::entities::{Message};
+use crate::core_models::entities::{Message, Peer};
 
 const PROTOCOL: &'static str = "BitTorrent protocol";
 
