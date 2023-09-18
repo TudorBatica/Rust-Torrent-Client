@@ -317,6 +317,21 @@ impl Bitfield {
 
         return false;
     }
+
+    pub fn to_available_pieces_vec(&self) -> Vec<usize> {
+        let mut pieces_available = Vec::new();
+        for (byte_idx, byte) in self.content.iter().enumerate() {
+            for bit_idx in 0..7 {
+                let mask = 1 << (7 - bit_idx);
+                let bit_value = byte & mask;
+                if bit_value != 0 {
+                    let piece_idx = (byte_idx * 8) + bit_idx;
+                    pieces_available.push(piece_idx);
+                }
+            }
+        }
+        return pieces_available;
+    }
 }
 
 
@@ -367,5 +382,20 @@ mod tests {
         bitfield1.piece_acquired(3);
         assert_eq!(bitfield1.has_any_missing_pieces_from(&bitfield2), true);
         assert_eq!(bitfield2.has_any_missing_pieces_from(&bitfield1), false);
+    }
+
+    #[test]
+    pub fn bitfield_to_available_pieces_vec_test() {
+        let mut bitfield = Bitfield::init(12);
+        let mut pieces_available: Vec<usize> = Vec::new();
+        assert_eq!(bitfield.to_available_pieces_vec(), pieces_available);
+
+        bitfield.piece_acquired(5);
+        pieces_available.push(5);
+        assert_eq!(bitfield.to_available_pieces_vec(), pieces_available);
+
+        bitfield.piece_acquired(11);
+        pieces_available.push(11);
+        assert_eq!(bitfield.to_available_pieces_vec(), pieces_available);
     }
 }
