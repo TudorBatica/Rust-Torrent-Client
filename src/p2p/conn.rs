@@ -99,7 +99,7 @@ async fn establish_tcp_connection(peer: &Peer) -> Result<TcpStream, P2PConnError
 }
 
 async fn read_from_stream<T: AsyncRead + Unpin>(stream: &mut T, mut num_of_bytes: usize) -> Result<Vec<u8>, P2PConnError> {
-    let mut buffer: Vec<u8> = Vec::with_capacity(num_of_bytes);
+    let mut buffer: Vec<u8> = vec![0u8; num_of_bytes];
 
     loop {
         let bytes_read = stream.take(num_of_bytes as u64).read_to_end(&mut buffer).await;
