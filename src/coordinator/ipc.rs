@@ -40,3 +40,28 @@ pub async fn broadcast(mut rx: Receiver<InternalEvent>,
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use tokio::sync::mpsc;
+    use crate::coordinator::ipc;
+    use crate::core_models::entities::{Block, DataBlock};
+    use crate::core_models::events::InternalEvent;
+
+    #[tokio::test]
+    async fn test_broadcast_block_downloaded() {
+        let (tx, rx) = mpsc::channel(32);
+        let (data_collector_tx, mut data_collector_rx) = mpsc::channel(32);
+        let p2p_tx = HashMap::new();
+
+        let block = DataBlock::new(1, 2, vec![0x01, 0x02, 0x03]);
+        let event = InternalEvent::BlockDownloaded(block.clone());
+        tx.send(event).await.unwrap();
+
+        tokio::spawn(async move { ipc::broadcast(rx, data_collector_tx, p2p_tx).await; });
+
+        let received_event = data_collector_rx.recv().await.unwrap();
+        assert_eq!(received_event, block);
+    }
+}
