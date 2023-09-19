@@ -68,7 +68,7 @@ impl Block {
     }
 }
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
 pub struct DataBlock {
     pub piece_idx: usize,
     pub offset: usize,
@@ -163,7 +163,7 @@ impl TorrentLayout {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Message {
     KeepAlive,
     Choke,
@@ -205,7 +205,7 @@ impl Message {
                 let piece_idx = Self::usize_from_be_bytes(bytes[1..5].to_vec());
                 let offset = Self::usize_from_be_bytes(bytes[5..9].to_vec());
                 let length = Self::usize_from_be_bytes(bytes[9..13].to_vec());
-                return Some(Message::Request(Block::new(piece_idx, offset, length)));
+                return Some(Message::Cancel(Block::new(piece_idx, offset, length)));
             }
             9 => {
                 let port = Self::usize_from_be_bytes(bytes[1..].to_vec());
@@ -295,10 +295,10 @@ impl Message {
 
     fn usize_to_four_be_bytes(number: usize) -> Vec<u8> {
         let mut result = Vec::with_capacity(4);
-        result[0] = ((number >> 24) & 0xFF) as u8;
-        result[1] = ((number >> 16) & 0xFF) as u8;
-        result[2] = ((number >> 8) & 0xFF) as u8;
-        result[3] = (number & 0xFF) as u8;
+        result.push(((number >> 24) & 0xFF) as u8);
+        result.push(((number >> 16) & 0xFF) as u8);
+        result.push(((number >> 8) & 0xFF) as u8);
+        result.push((number & 0xFF) as u8);
 
         return result;
     }
@@ -365,7 +365,7 @@ impl Bitfield {
 
 #[cfg(test)]
 mod tests {
-    use crate::core_models::entities::Bitfield;
+    use crate::core_models::entities::{Bitfield, Block, DataBlock, Message};
 
     #[test]
     pub fn bitfield_initialization_test() {
@@ -425,5 +425,148 @@ mod tests {
         bitfield.piece_acquired(11);
         pieces_available.push(11);
         assert_eq!(bitfield.to_available_pieces_vec(), pieces_available);
+    }
+
+    #[test]
+    fn serialize_choke_test() {
+        let message = Message::Choke;
+        let serialized_bytes = message.serialize();
+        assert_eq!(serialized_bytes, vec![0]);
+    }
+
+    #[test]
+    fn deserialize_choke_test() {
+        let serialized_bytes = vec![0];
+        let deserialized_message = Message::deserialize(serialized_bytes.clone());
+        assert_eq!(deserialized_message, Some(Message::Choke));
+    }
+
+    #[test]
+    fn serialize_unchoke_test() {
+        let message = Message::Unchoke;
+        let serialized_bytes = message.serialize();
+        assert_eq!(serialized_bytes, vec![1]);
+    }
+
+    #[test]
+    fn deserialize_unchoke_test() {
+        let serialized_bytes = vec![1];
+        let message = Message::deserialize(serialized_bytes.clone());
+        assert_eq!(message, Some(Message::Unchoke));
+    }
+
+    #[test]
+    fn serialize_interested_test() {
+        let message = Message::Interested;
+        let serialized_bytes = message.serialize();
+        assert_eq!(serialized_bytes, vec![2]);
+    }
+
+    #[test]
+    fn deserialize_interested_test() {
+        let serialized_bytes = vec![2];
+        let deserialized_message = Message::deserialize(serialized_bytes.clone());
+        assert_eq!(deserialized_message, Some(Message::Interested));
+    }
+
+    #[test]
+    fn serialize_not_interested_test() {
+        let message = Message::NotInterested;
+        let serialized_bytes = message.serialize();
+        assert_eq!(serialized_bytes, vec![3]);
+    }
+
+    #[test]
+    fn deserialize_not_interested_test() {
+        let serialized_bytes = vec![3];
+        let deserialized_message = Message::deserialize(serialized_bytes.clone());
+        assert_eq!(deserialized_message, Some(Message::NotInterested));
+    }
+
+    #[test]
+    fn serialize_have_test() {
+        let have_message = Message::Have(42);
+        let serialized_bytes = have_message.serialize();
+        assert_eq!(serialized_bytes, vec![4, 0, 0, 0, 42]);
+    }
+
+    #[test]
+    fn deserialize_have_test() {
+        let index = 42;
+        let serialized_bytes = vec![4, 0, 0, 0, 42];
+        let deserialized_message = Message::deserialize(serialized_bytes.clone());
+        assert_eq!(deserialized_message, Some(Message::Have(index)));
+    }
+
+    #[test]
+    fn serialize_bitfield_test() {
+        // a bitfield with 9 pieces and only piece 2 owned will be represented as
+        // 0010_0000  0000_0000
+        let mut bitfield = Bitfield::init(9);
+        bitfield.piece_acquired(2);
+        let serialized_bytes = Message::Bitfield(bitfield.content.clone()).serialize();
+        assert_eq!(serialized_bytes, vec![5u8, 32, 0]);
+    }
+
+    #[test]
+    fn deserialize_bitfield_test() {
+        let mut bitfield = Bitfield::init(9);
+        bitfield.piece_acquired(2);
+        let serialized_bytes = vec![5u8, 32, 0];
+        let deserialized_message = Message::deserialize(serialized_bytes.clone());
+        assert_eq!(deserialized_message, Some(Message::Bitfield(bitfield.content.clone())));
+    }
+
+    #[test]
+    fn serialize_request_test() {
+        let block = Block::new(1, 2, 3);
+        let request_message = Message::Request(block);
+        let expected_bytes: Vec<u8> = vec![6, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3];
+        let serialized_bytes = request_message.serialize();
+        assert_eq!(serialized_bytes, expected_bytes);
+    }
+
+    #[test]
+    fn deserialize_request_test() {
+        let block = Block::new(1, 2, 3);
+        let bytes: Vec<u8> = vec![6, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3];
+        let deserialized_message = Message::deserialize(bytes);
+        assert_eq!(deserialized_message, Some(Message::Request(block)));
+    }
+
+    #[test]
+    fn serialize_piece_test() {
+        let data_block = DataBlock::new(1, 2, vec![0x01, 0x02, 0x03]);
+        let piece_message = Message::Piece(data_block.clone());
+        let mut expected_bytes = vec![7, 0, 0, 0, 1, 0, 0, 0, 2];
+        expected_bytes.extend(data_block.data.iter());
+        let serialized_bytes = piece_message.serialize();
+        assert_eq!(serialized_bytes, expected_bytes);
+    }
+
+    #[test]
+    fn deserialize_piece_test() {
+        let data_block = DataBlock::new(1, 2, vec![0x01, 0x02, 0x03]);
+        let mut expected_bytes = vec![7, 0, 0, 0, 1, 0, 0, 0, 2];
+        expected_bytes.extend(data_block.data.iter());
+        let deserialized_message = Message::deserialize(expected_bytes.clone());
+        assert_eq!(deserialized_message, Some(Message::Piece(data_block)));
+    }
+
+    #[test]
+    fn serialize_cancel_test() {
+        let block = Block::new(1, 2, 3); // Example block parameters.
+        let cancel_message = Message::Cancel(block);
+        let expected_bytes: Vec<u8> = vec![8, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3];
+        let serialized_bytes = cancel_message.serialize();
+        assert_eq!(serialized_bytes, expected_bytes);
+    }
+
+    #[test]
+    fn deserialize_cancel_test() {
+        let block = Block::new(1, 2, 3); // Example block parameters.
+        let expected_bytes: Vec<u8> = vec![8, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3];
+        let deserialized_message = Message::deserialize(expected_bytes.clone());
+        assert_eq!(deserialized_message, Some(Message::Cancel(block)));
     }
 }
