@@ -7,7 +7,6 @@ pub enum InternalEvent {
     BlockDownloaded(DataBlock),
     BlockStored(Block),
     DownloadComplete,
-    EndGameEnabled(TransferIdx),
     PieceStored(usize),
 }
 
@@ -33,12 +32,6 @@ impl InternalEvent {
     pub fn is_download_complete(&self) -> bool {
         return match self {
             InternalEvent::DownloadComplete => true,
-            _ => false
-        };
-    }
-    pub fn is_end_game_enabled(&self) -> bool {
-        return match self {
-            InternalEvent::EndGameEnabled(_) => true,
             _ => false
         };
     }
