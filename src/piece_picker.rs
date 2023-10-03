@@ -166,7 +166,10 @@ impl PiecePicker for RarestPiecePicker {
             let pick_result = self.pick_blocks(piece_idx, num_of_blocks);
             if let Some(event) = pick_result.pick_event {
                 match event {
-                    PickEvent::FirstPickedBlocks => self.update_priority(piece_idx, SOME_BLOCKS_PICKED_BONUS),
+                    PickEvent::FirstPickedBlocks => {
+                        println!("Piece Picker :: started picking from new piece {}", piece_idx);
+                        self.update_priority(piece_idx, SOME_BLOCKS_PICKED_BONUS)
+                    },
                     PickEvent::AllBlocksPicked => self.update_priority(piece_idx, ALL_BLOCKS_PICKED_PENALTY - SOME_BLOCKS_PICKED_BONUS),
                 }
             }

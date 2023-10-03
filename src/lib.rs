@@ -1,6 +1,7 @@
 pub mod config;
 
 pub mod coordinator {
+    pub mod choker;
     pub mod ipc;
     pub mod task;
 }

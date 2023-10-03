@@ -64,9 +64,11 @@ async fn handle_peer_message(message: Message, state: &mut P2PState, fp: &mut Bo
     match message {
         Message::KeepAlive => {}
         Message::Choke => {
+            println!("Choked by {}", state.transfer_idx);
             state.client_is_choked = true;
         }
         Message::Unchoke => {
+            println!("Unchoked by {}", state.transfer_idx);
             state.client_is_choked = false;
             pick_blocks(state, &mut result, &picker).await;
         }

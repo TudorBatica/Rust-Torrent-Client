@@ -11,7 +11,6 @@ pub struct P2PState {
     pub client_is_interested: bool,
     pub peer_is_interested: bool,
     pub ongoing_requests: HashSet<Block>,
-    pub endgame_enabled: bool,
 }
 
 impl P2PState {
@@ -25,24 +24,28 @@ impl P2PState {
             client_is_interested: false,
             peer_is_interested: false,
             ongoing_requests: HashSet::new(),
-            endgame_enabled: false,
         };
     }
 }
 
 #[derive(Debug)]
-pub enum P2PTransferError {}
+pub enum P2PTransferError {
+    PeerConnFailed
+}
 
 // Events that can be received by a p2p transfer task
 #[derive(Clone)]
 pub enum P2PInboundEvent {
     BlockStored(Block),
     PieceStored(usize),
-    EndgameEnabled,
+    SendKeepAlive,
+    PeerConnFailed,
 }
 
 // Helper enum that models all the possible incoming messages for a p2p transfer task
+#[derive(Clone)]
 pub enum FunnelMsg {
     InternalEvent(P2PInboundEvent),
     PeerMessage(Message),
+    //todo: add TerminationEvent!
 }

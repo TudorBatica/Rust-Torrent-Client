@@ -50,6 +50,7 @@ impl TorrentTrackerClient {
             ("event", "started"),
             ("downloaded", "0"),
             ("uploaded", "0"),
+            ("numwant", "300")
         ];
         let query_params = query_params.into_iter().enumerate()
             .map(|(param_idx, (param, value))| {

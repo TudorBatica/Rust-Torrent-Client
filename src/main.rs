@@ -14,13 +14,19 @@ async fn main() {
     // parse metadata and prepare output files
     let torrent = torrent_parser::parse_torrent("test_resources/debian-12.0.0-amd64-netinst.iso.torrent").unwrap();
     let layout = TorrentLayout::from_torrent(&torrent);
+    println!("layout is {:?}", layout);
+
     create_output_files(&layout);
 
     // prepare shared dependencies
     let (coordinator_tx, coordinator_rx) = mpsc::channel(128);
     let deps = DependencyProvider::init(config, torrent, layout, coordinator_tx);
 
-    let _ = rust_torrent_client::coordinator::task::run(Arc::new(deps), coordinator_rx).await;
+    let result = rust_torrent_client::coordinator::task::run(Arc::new(deps), coordinator_rx).await;
+    match result {
+        Ok(_) => println!("Transfer completed!"),
+        Err(err) => println!("Transfer failed with error {:?}", err)
+    }
 }
 
 fn create_output_files(layout: &TorrentLayout) {

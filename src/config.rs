@@ -13,7 +13,7 @@ pub struct Config {
 impl Config {
     pub fn init() -> Self {
         return Config {
-            listening_port: 6882,
+            listening_port: 42000,
             client_id: Config::generate_client_id(),
         };
     }

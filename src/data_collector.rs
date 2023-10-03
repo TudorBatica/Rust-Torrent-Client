@@ -10,7 +10,8 @@ use crate::core_models::events::InternalEvent;
 use crate::file_provider::{FileProv};
 
 pub async fn spawn(deps: Arc<dyn TransferDeps>) -> (JoinHandle<()>, Sender<DataBlock>) {
-    let (tx_to_self, rx) = mpsc::channel::<DataBlock>(128);
+    println!("Data Collector :: spawning task");
+    let (tx_to_self, rx) = mpsc::channel::<DataBlock>(2048);
     let handle = tokio::spawn(async move {
         run(deps.clone(), rx).await;
     });
@@ -45,6 +46,7 @@ async fn run(deps: Arc<dyn TransferDeps>, mut rx: Receiver<DataBlock>) {
             }
             tx.send(InternalEvent::BlockStored(data_block.to_block())).await.unwrap();
         } else if piece_corrupt(data_block.piece_idx, &mut file_prov, &hashes).await {
+            println!("Data Collector :: piece corrupt -> {}", data_block.piece_idx);
             {
                 let mut picker = picker.lock().await;
                 picker.reinsert_piece(data_block.piece_idx);
@@ -59,8 +61,10 @@ async fn run(deps: Arc<dyn TransferDeps>, mut rx: Receiver<DataBlock>) {
             let piece_idx = data_block.piece_idx.clone();
             tx.send(InternalEvent::BlockStored(data_block.to_block())).await.unwrap();
             tx.send(InternalEvent::PieceStored(piece_idx)).await.unwrap();
+            println!("Data Collector :: piece complete -> {}, {} out of {}", data_block.piece_idx, acquired_pieces, layout.pieces);
         }
         if acquired_pieces == layout.pieces {
+            println!("Data Collector :: download complete");
             tx.send(InternalEvent::DownloadComplete).await.unwrap();
             break;
         }
