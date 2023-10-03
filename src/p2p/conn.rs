@@ -1,4 +1,4 @@
-use tokio::net::TcpStream;
+use tokio::net::{TcpStream};
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use mockall::automock;
@@ -36,9 +36,6 @@ impl PeerReceiver for PeerReadConn {
     async fn receive(&mut self) -> Result<Message, P2PConnError> {
         let len = read_from_stream(&mut self.stream, 4).await?;
         let len = usize_from_be_bytes(len);
-        if len == 0 {
-            return Ok(Message::KeepAlive);
-        }
         let message = read_from_stream(&mut self.stream, len).await?;
         return match Message::deserialize(message) {
             Some(msg) => Ok(msg),
@@ -85,7 +82,6 @@ impl PeerConnector for TCPPeerConnector {
 }
 
 async fn establish_tcp_connection(peer: &Peer) -> Result<TcpStream, P2PConnError> {
-    println!("Establishing connection w/ peer {}:{}", peer.ip, peer.port);
     return match TcpStream::connect((peer.ip, peer.port)).await {
         Ok(stream) => {
             println!("TCP stream established w/ peer {}:{}", peer.ip, peer.port);
@@ -99,6 +95,10 @@ async fn establish_tcp_connection(peer: &Peer) -> Result<TcpStream, P2PConnError
 }
 
 async fn read_from_stream<T: AsyncRead + Unpin>(stream: &mut T, mut num_of_bytes: usize) -> Result<Vec<u8>, P2PConnError> {
+    if num_of_bytes == 0 {
+        return Ok(vec![]);
+    }
+
     let mut buffer: Vec<u8> = Vec::with_capacity(num_of_bytes);
 
     loop {
@@ -189,3 +189,32 @@ fn usize_from_be_bytes(bytes: Vec<u8>) -> usize {
         .map(|(idx, byte)| 256usize.pow(idx as u32) * byte as usize)
         .sum();
 }
+
+#[cfg(test)]
+mod tests {
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::{TcpListener, TcpStream};
+    use crate::core_models::entities::{DataBlock, Message};
+    use crate::p2p::conn::{PeerReadConn, PeerReceiver};
+
+    #[tokio::test]
+    async fn test_receive_message() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let local_addr = listener.local_addr().unwrap();
+
+        let task = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let (read_half, _) = tokio::io::split(stream);
+            let mut receiver = PeerReadConn { stream: read_half };
+            return receiver.receive().await.unwrap();
+        });
+
+        let mut client_stream = TcpStream::connect(&local_addr).await.unwrap();
+        let piece_msg = vec![0, 0, 0, 10, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // a piece message for piece idx 0, begin = 0, data = [0]
+        client_stream.write_all(&piece_msg).await.unwrap();
+
+        let received_message = task.await.unwrap();
+        assert_eq!(received_message, Message::Piece(DataBlock::new(0, 0, vec![0])));
+    }
+}
+

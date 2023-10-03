@@ -180,6 +180,10 @@ pub enum Message {
 
 impl Message {
     pub fn deserialize(bytes: Vec<u8>) -> Option<Self> {
+        if bytes.is_empty() {
+            return Some(Message::KeepAlive);
+        }
+
         match bytes[0] {
             0 => Some(Message::Choke),
             1 => Some(Message::Unchoke),
@@ -255,7 +259,10 @@ impl Message {
             }
         }
 
-        return bytes;
+        let mut message = Self::usize_to_four_be_bytes(bytes.len());
+        message.extend(bytes);
+
+        return message;
     }
 
     pub fn is_interested(&self) -> bool {
@@ -431,7 +438,7 @@ mod tests {
     fn serialize_choke_test() {
         let message = Message::Choke;
         let serialized_bytes = message.serialize();
-        assert_eq!(serialized_bytes, vec![0]);
+        assert_eq!(serialized_bytes, vec![0, 0, 0, 1, 0]);
     }
 
     #[test]
@@ -445,7 +452,7 @@ mod tests {
     fn serialize_unchoke_test() {
         let message = Message::Unchoke;
         let serialized_bytes = message.serialize();
-        assert_eq!(serialized_bytes, vec![1]);
+        assert_eq!(serialized_bytes, vec![0, 0, 0, 1, 1]);
     }
 
     #[test]
@@ -459,7 +466,7 @@ mod tests {
     fn serialize_interested_test() {
         let message = Message::Interested;
         let serialized_bytes = message.serialize();
-        assert_eq!(serialized_bytes, vec![2]);
+        assert_eq!(serialized_bytes, vec![0, 0, 0, 1, 2]);
     }
 
     #[test]
@@ -473,7 +480,7 @@ mod tests {
     fn serialize_not_interested_test() {
         let message = Message::NotInterested;
         let serialized_bytes = message.serialize();
-        assert_eq!(serialized_bytes, vec![3]);
+        assert_eq!(serialized_bytes, vec![0, 0, 0, 1, 3]);
     }
 
     #[test]
@@ -487,7 +494,7 @@ mod tests {
     fn serialize_have_test() {
         let have_message = Message::Have(42);
         let serialized_bytes = have_message.serialize();
-        assert_eq!(serialized_bytes, vec![4, 0, 0, 0, 42]);
+        assert_eq!(serialized_bytes, vec![0, 0, 0, 5, 4, 0, 0, 0, 42]);
     }
 
     #[test]
@@ -505,7 +512,7 @@ mod tests {
         let mut bitfield = Bitfield::init(9);
         bitfield.piece_acquired(2);
         let serialized_bytes = Message::Bitfield(bitfield.content.clone()).serialize();
-        assert_eq!(serialized_bytes, vec![5u8, 32, 0]);
+        assert_eq!(serialized_bytes, vec![0, 0, 0, 3, 5u8, 32, 0]);
     }
 
     #[test]
@@ -521,7 +528,7 @@ mod tests {
     fn serialize_request_test() {
         let block = Block::new(1, 2, 3);
         let request_message = Message::Request(block);
-        let expected_bytes: Vec<u8> = vec![6, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3];
+        let expected_bytes: Vec<u8> = vec![0, 0, 0, 13, 6, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3];
         let serialized_bytes = request_message.serialize();
         assert_eq!(serialized_bytes, expected_bytes);
     }
@@ -536,10 +543,9 @@ mod tests {
 
     #[test]
     fn serialize_piece_test() {
-        let data_block = DataBlock::new(1, 2, vec![0x01, 0x02, 0x03]);
+        let data_block = DataBlock::new(1, 2, vec![1, 2, 3]);
         let piece_message = Message::Piece(data_block.clone());
-        let mut expected_bytes = vec![7, 0, 0, 0, 1, 0, 0, 0, 2];
-        expected_bytes.extend(data_block.data.iter());
+        let expected_bytes = vec![0, 0, 0, 12, 7, 0, 0, 0, 1, 0, 0, 0, 2, 1, 2, 3];
         let serialized_bytes = piece_message.serialize();
         assert_eq!(serialized_bytes, expected_bytes);
     }
@@ -557,7 +563,7 @@ mod tests {
     fn serialize_cancel_test() {
         let block = Block::new(1, 2, 3); // Example block parameters.
         let cancel_message = Message::Cancel(block);
-        let expected_bytes: Vec<u8> = vec![8, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3];
+        let expected_bytes: Vec<u8> = vec![0, 0, 0, 13, 8, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3];
         let serialized_bytes = cancel_message.serialize();
         assert_eq!(serialized_bytes, expected_bytes);
     }
