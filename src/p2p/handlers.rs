@@ -7,7 +7,7 @@ use crate::file_provider::FileProv;
 use crate::p2p::state::{FunnelMsg, P2PError, P2PInboundEvent, P2PState};
 use crate::piece_picker::{PiecePicker};
 
-const MAX_CLIENT_ONGOING_REQUESTS: usize = 5;
+const MAX_ONGOING_REQUESTS: usize = 10;
 
 pub struct HandlerResult {
     pub internal_events: Vec<InternalEvent>,
@@ -138,7 +138,7 @@ fn update_clients_interested_status(state: &mut P2PState, result: &mut HandlerRe
 }
 
 async fn pick_blocks(state: &mut P2PState, result: &mut HandlerResult, picker: &Arc<Mutex<dyn PiecePicker>>) {
-    let blocks_to_request = MAX_CLIENT_ONGOING_REQUESTS - state.ongoing_requests.len();
+    let blocks_to_request = MAX_ONGOING_REQUESTS - state.ongoing_requests.len();
     if blocks_to_request < 1 || state.client_is_choked || !state.client_is_interested {
         return;
     }
