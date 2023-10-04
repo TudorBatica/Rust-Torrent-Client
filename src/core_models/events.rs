@@ -8,6 +8,7 @@ pub enum InternalEvent {
     BlockStored(Block),
     DownloadComplete,
     PieceStored(usize),
+    P2PTransferTerminated(usize),
 }
 
 impl InternalEvent {

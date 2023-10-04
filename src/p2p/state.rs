@@ -28,9 +28,14 @@ impl P2PState {
     }
 }
 
-#[derive(Debug)]
-pub enum P2PTransferError {
-    PeerConnFailed
+#[derive(Clone, Debug)]
+pub enum P2PError {
+    TCPConnectionNotEstablished,
+    HandshakeFailed,
+    SocketClosed,
+    IO(String),
+    UnknownMessageReceived,
+    MessageDeliveryFailed(String),
 }
 
 // Events that can be received by a p2p transfer task
@@ -39,7 +44,6 @@ pub enum P2PInboundEvent {
     BlockStored(Block),
     PieceStored(usize),
     SendKeepAlive,
-    PeerConnFailed,
 }
 
 // Helper enum that models all the possible incoming messages for a p2p transfer task
@@ -47,5 +51,5 @@ pub enum P2PInboundEvent {
 pub enum FunnelMsg {
     InternalEvent(P2PInboundEvent),
     PeerMessage(Message),
-    //todo: add TerminationEvent!
+    P2PFailure(P2PError),
 }

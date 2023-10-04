@@ -4,7 +4,7 @@ use crate::config;
 use crate::core_models::entities::{Bitfield, DataBlock, Message};
 use crate::core_models::events::InternalEvent;
 use crate::file_provider::FileProv;
-use crate::p2p::state::{FunnelMsg, P2PInboundEvent, P2PState};
+use crate::p2p::state::{FunnelMsg, P2PError, P2PInboundEvent, P2PState};
 use crate::piece_picker::{PiecePicker};
 
 const MAX_CLIENT_ONGOING_REQUESTS: usize = 5;
@@ -29,10 +29,12 @@ impl HandlerResult {
     }
 }
 
-pub async fn handle(msg: FunnelMsg, state: &mut P2PState, fp: &mut Box<dyn FileProv>, picker: &Arc<Mutex<dyn PiecePicker>>) -> HandlerResult {
+pub async fn handle(msg: FunnelMsg, state: &mut P2PState, fp: &mut Box<dyn FileProv>, picker: &Arc<Mutex<dyn PiecePicker>>)
+                    -> Result<HandlerResult, P2PError> {
     return match msg {
-        FunnelMsg::InternalEvent(event) => handle_event(event, state).await,
-        FunnelMsg::PeerMessage(message) => handle_peer_message(message, state, fp, picker).await
+        FunnelMsg::InternalEvent(event) => Ok(handle_event(event, state).await),
+        FunnelMsg::PeerMessage(message) => Ok(handle_peer_message(message, state, fp, picker).await),
+        FunnelMsg::P2PFailure(error) => Err(error)
     };
 }
 
@@ -52,7 +54,6 @@ async fn handle_event(event: P2PInboundEvent, state: &mut P2PState) -> HandlerRe
         P2PInboundEvent::SendKeepAlive => {
             result.msg(Message::KeepAlive);
         }
-        P2PInboundEvent::PeerConnFailed => {}
     };
 
     return result;
@@ -352,7 +353,7 @@ mod tests {
         let (picker, mut fp) = prepare_mocks();
 
         let msg = PeerMessage(Message::Request(Block::new(0, 0, config::BLOCK_SIZE_BYTES)));
-        let result = handle(msg, &mut state, &mut fp, &picker).await;
+        let result = handle(msg, &mut state, &mut fp, &picker).await.unwrap();
 
         assert!(result.messages_for_peer.iter().any(|msg| msg.is_piece()));
     }
@@ -367,7 +368,7 @@ mod tests {
         let (picker, mut fp) = prepare_mocks();
 
         let msg = PeerMessage(Message::Piece(DataBlock::new(0, 0, vec![])));
-        let result = handle(msg, &mut state, &mut fp, &picker).await;
+        let result = handle(msg, &mut state, &mut fp, &picker).await.unwrap();
 
         assert!(state.ongoing_requests.is_empty());
         assert!(result.internal_events.iter().any(|msg| msg.is_block_downloaded()));

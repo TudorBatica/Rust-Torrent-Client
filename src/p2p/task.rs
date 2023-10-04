@@ -6,15 +6,16 @@ use tokio::task::JoinHandle;
 use tokio::time;
 use crate::{p2p};
 use crate::core_models::entities::{Bitfield, Peer};
+use crate::core_models::events::InternalEvent;
 use crate::dependency_provider::TransferDeps;
-use crate::p2p::conn::PeerReceiver;
-use crate::p2p::state::{FunnelMsg, P2PInboundEvent, P2PState, P2PTransferError};
+use crate::p2p::conn::{PeerReceiver};
+use crate::p2p::state::{FunnelMsg, P2PInboundEvent, P2PState, P2PError};
 
 pub async fn spawn(peer: Peer,
                    transfer_idx: usize,
                    client_bitfield: Bitfield,
                    deps: Arc<dyn TransferDeps>,
-) -> (JoinHandle<Result<(), P2PTransferError>>, Sender<P2PInboundEvent>) {
+) -> (JoinHandle<Result<(), P2PError>>, Sender<P2PInboundEvent>) {
     let (tx_to_self, rx) = mpsc::channel::<P2PInboundEvent>(2048);
     let state = P2PState::new(transfer_idx, client_bitfield, deps.torrent_layout().pieces);
 
@@ -28,17 +29,23 @@ pub async fn spawn(peer: Peer,
 async fn run(peer: Peer,
              deps: Arc<dyn TransferDeps>,
              mut state: P2PState,
-             rx: Receiver<P2PInboundEvent>) -> Result<(), P2PTransferError> {
-    // connect to peer
+             rx: Receiver<P2PInboundEvent>) -> Result<(), P2PError> {
     let client_id = deps.client_config().client_id;
     let info_hash = deps.info_hash();
     let connector = deps.peer_connector();
-    let (read_conn, mut write_conn) = connector.connect_to(peer, info_hash, client_id).await.unwrap();
-
-    // initialize needed dependencies
     let output_tx = deps.output_tx();
     let picker = deps.piece_picker();
     let mut file_provider = deps.file_provider();
+
+    let (read_conn, mut write_conn) = match connector.connect_to(peer, info_hash, client_id).await {
+        Ok((read, write)) => { (read, write) }
+        Err(err) => {
+            println!("P2P Transfer {} terminated due to {:?}", state.transfer_idx, err);
+            output_tx.send(InternalEvent::P2PTransferTerminated(state.transfer_idx)).await.unwrap();
+            return Err(err);
+        }
+    };
+
     file_provider.open_read_only_instance().await;
 
     // start p2p and internal events listeners and merge them into one
@@ -48,31 +55,25 @@ async fn run(peer: Peer,
     let keepalive_handle = tokio::spawn(recv_keep_alive_scheduler_events(funnel_tx.clone()));
 
     while let Some(data) = funnel_rx.recv().await {
-        //todo: refactor peer-conn failed message
-        match data.clone() {
-            FunnelMsg::InternalEvent(event) => {
-                match event {
-                    P2PInboundEvent::PeerConnFailed => {
-                        println!("Error in p2p task {}", state.transfer_idx);
-                        events_handle.abort();
-                        keepalive_handle.abort();
-                        return Err(P2PTransferError::PeerConnFailed);
-                    }
-                    _ => {}
-                }
-            }
-            FunnelMsg::PeerMessage(_) => {}
-        };
         let handler_result = p2p::handlers::handle(
             data, &mut state, &mut file_provider, &picker,
         ).await;
-        for message in handler_result.messages_for_peer {
-            println!("{} sending message {:?}", state.transfer_idx, message);
-            write_conn.send(message).await.unwrap();
-        }
-        for event in handler_result.internal_events {
-            println!("{} sending event", state.transfer_idx);
-            output_tx.send(event).await.unwrap();
+        match handler_result {
+            Ok(result) => {
+                for message in result.messages_for_peer {
+                    write_conn.send(message).await.unwrap();
+                }
+                for event in result.internal_events {
+                    output_tx.send(event).await.unwrap();
+                }
+            }
+            Err(err) => {
+                println!("P2P Transfer terminated due to {:?}", err);
+                output_tx.send(InternalEvent::P2PTransferTerminated(state.transfer_idx)).await.unwrap();
+                events_handle.abort();
+                keepalive_handle.abort();
+                return Err(err);
+            }
         }
     }
 
@@ -89,8 +90,7 @@ async fn recv_peer_messages(mut conn: Box<dyn PeerReceiver>, tx: Sender<FunnelMs
         let _ = match message {
             Ok(msg) => tx.send(FunnelMsg::PeerMessage(msg)).await.unwrap(),
             Err(err) => {
-                println!("Encountered p2p error :: {:?}", err);
-                tx.send(FunnelMsg::InternalEvent(P2PInboundEvent::PeerConnFailed)).await.unwrap();
+                tx.send(FunnelMsg::P2PFailure(err)).await.unwrap();
                 break;
             }
         };

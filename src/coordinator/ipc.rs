@@ -6,7 +6,7 @@ use crate::p2p::state::P2PInboundEvent;
 
 pub async fn broadcast_events(mut rx: Receiver<InternalEvent>,
                               data_collector_tx: Sender<DataBlock>,
-                              p2p_tx: HashMap<usize, Sender<P2PInboundEvent>>,
+                              mut p2p_tx: HashMap<usize, Sender<P2PInboundEvent>>,
 ) {
     while let Some(event) = rx.recv().await {
         match event {
@@ -25,6 +25,9 @@ pub async fn broadcast_events(mut rx: Receiver<InternalEvent>,
                 for (_, tx) in p2p_tx.iter() {
                     let _ = tx.send(P2PInboundEvent::PieceStored(piece_idx)).await;
                 }
+            }
+            InternalEvent::P2PTransferTerminated(transfer_idx) => {
+                p2p_tx.remove(&transfer_idx);
             }
         }
     }
