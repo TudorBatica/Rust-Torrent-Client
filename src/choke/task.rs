@@ -5,7 +5,7 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
 use tokio::time;
 use crate::choke::handler;
-use crate::choke::state::{ChokeEvent, PeerState};
+use crate::choke::models::{ChokeEvent, PeerState};
 use crate::core_models::events::InternalEvent;
 
 const CHANGE_UNCHOKED_PEERS_INTERVAL_SECS: u64 = 10;

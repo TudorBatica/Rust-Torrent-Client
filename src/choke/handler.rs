@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use rand::prelude::IteratorRandom;
-use crate::choke::state::{ChokeEvent, PeerState};
+use crate::choke::models::{ChokeEvent, PeerState};
 use crate::core_models::events::InternalEvent;
 
 const MAX_CONCURRENTLY_UNCHOKED_PEERS: usize = 4;
@@ -78,7 +78,7 @@ fn optimistic_unchoke(peers: &mut HashMap<usize, PeerState>) -> Vec<InternalEven
 mod tests {
     use std::collections::HashMap;
     use crate::choke::handler::handle;
-    use crate::choke::state::{ChokeEvent, PeerState};
+    use crate::choke::models::{ChokeEvent, PeerState};
     use crate::core_models::events::InternalEvent;
 
     #[test]
