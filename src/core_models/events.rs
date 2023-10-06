@@ -2,19 +2,23 @@ use crate::core_models::entities::{Block, DataBlock};
 
 pub type TransferIdx = usize;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum InternalEvent {
-    BlockDownloaded(DataBlock),
+    BlockDownloaded(usize, DataBlock),
     BlockStored(Block),
+    ChokePeer(usize),
     DownloadComplete,
     PieceStored(usize),
     P2PTransferTerminated(usize),
+    UnchokePeer(usize),
+    ClientInterestedInPeer(usize, bool),
+    PeerInterestedInClient(usize, bool),
 }
 
 impl InternalEvent {
     pub fn is_block_downloaded(&self) -> bool {
         return match self {
-            InternalEvent::BlockDownloaded(_) => true,
+            InternalEvent::BlockDownloaded(..) => true,
             _ => false
         };
     }

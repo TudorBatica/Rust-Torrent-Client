@@ -54,6 +54,14 @@ async fn handle_event(event: P2PInboundEvent, state: &mut P2PState) -> HandlerRe
         P2PInboundEvent::SendKeepAlive => {
             result.msg(Message::KeepAlive);
         }
+        P2PInboundEvent::Choke => {
+            state.peer_is_choked = true;
+            result.msg(Message::Choke);
+        }
+        P2PInboundEvent::Unchoke => {
+            state.peer_is_choked = false;
+            result.msg(Message::Unchoke);
+        }
     };
 
     return result;
@@ -75,9 +83,11 @@ async fn handle_peer_message(message: Message, state: &mut P2PState, fp: &mut Bo
         }
         Message::Interested => {
             state.peer_is_interested = true;
+            result.event(InternalEvent::PeerInterestedInClient(state.transfer_idx, true));
         }
         Message::NotInterested => {
             state.peer_is_interested = false;
+            result.event(InternalEvent::PeerInterestedInClient(state.transfer_idx, false));
         }
         Message::Have(piece_idx) => {
             {
@@ -112,7 +122,7 @@ async fn handle_peer_message(message: Message, state: &mut P2PState, fp: &mut Bo
         Message::Piece(data_block) => {
             let block = data_block.to_block();
             state.ongoing_requests.remove(&block);
-            result.event(InternalEvent::BlockDownloaded(data_block));
+            result.event(InternalEvent::BlockDownloaded(state.transfer_idx, data_block));
             update_clients_interested_status(state, &mut result);
             pick_blocks(state, &mut result, &picker).await;
         }
@@ -131,9 +141,11 @@ fn update_clients_interested_status(state: &mut P2PState, result: &mut HandlerRe
     if peer_has_needed_data && !state.client_is_interested {
         state.client_is_interested = true;
         result.msg(Message::Interested);
+        result.event(InternalEvent::ClientInterestedInPeer(state.transfer_idx, true));
     } else if !peer_has_needed_data && state.client_is_interested {
         state.client_is_interested = false;
         result.msg(Message::NotInterested);
+        result.event(InternalEvent::ClientInterestedInPeer(state.transfer_idx, false));
     }
 }
 

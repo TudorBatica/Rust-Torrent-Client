@@ -5,7 +5,7 @@ use tokio::task::JoinHandle;
 use crate::coordinator::ipc;
 use crate::core_models::entities::{Bitfield, Peer};
 use crate::core_models::events::InternalEvent;
-use crate::data_collector;
+use crate::{choke, data_collector};
 use crate::dependency_provider::TransferDeps;
 use crate::p2p::state::{P2PInboundEvent, P2PError};
 use crate::p2p::task;
@@ -31,8 +31,9 @@ pub async fn run(deps: Arc<dyn TransferDeps>, rx: Receiver<InternalEvent>) -> Re
 
     let (_data_collector_handle, data_collector_tx) = data_collector::spawn(deps.clone()).await;
     let (_p2p_handles, p2p_tx) = spawn_p2p_tasks(deps.clone(), client_bitfield.clone(), tracker_resp.peers).await;
+    let (_choke_handle, choke_tx) = choke::task::spawn(deps.output_tx().clone(), p2p_tx.len()).await;
 
-    ipc::broadcast_events(rx, data_collector_tx, p2p_tx).await;
+    ipc::broadcast_events(rx, choke_tx, data_collector_tx, p2p_tx).await;
     println!("transfer completed at... {}", chrono::prelude::Utc::now());
 
     return Ok(());

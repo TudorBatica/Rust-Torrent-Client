@@ -44,6 +44,8 @@ pub enum P2PInboundEvent {
     BlockStored(Block),
     PieceStored(usize),
     SendKeepAlive,
+    Choke,
+    Unchoke
 }
 
 // Helper enum that models all the possible incoming messages for a p2p transfer task
