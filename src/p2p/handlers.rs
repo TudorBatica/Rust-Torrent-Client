@@ -4,7 +4,7 @@ use crate::config;
 use crate::core_models::entities::{Bitfield, DataBlock, Message};
 use crate::core_models::events::InternalEvent;
 use crate::file_provider::FileProv;
-use crate::p2p::state::{P2PError, P2PEvent, P2PState};
+use crate::p2p::models::{P2PError, P2PEvent, P2PState};
 use crate::piece_picker::{PiecePicker};
 
 const MAX_ONGOING_REQUESTS: usize = 10;
@@ -167,7 +167,7 @@ mod tests {
     use crate::core_models::entities::{Bitfield, Block, DataBlock, Message};
     use crate::file_provider::{FileProv, MockFileProv};
     use crate::p2p::handlers::{handle, HandlerResult, pick_blocks, update_clients_interested_status};
-    use crate::p2p::state::{P2PEvent, P2PState};
+    use crate::p2p::models::{P2PEvent, P2PState};
     use crate::piece_picker::{MockPiecePicker, PiecePicker};
 
     #[test]

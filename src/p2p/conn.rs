@@ -4,7 +4,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use mockall::automock;
 use tokio::io;
 use crate::core_models::entities::{Message, Peer};
-use crate::p2p::state::P2PError;
+use crate::p2p::models::P2PError;
 
 const PROTOCOL: &'static str = "BitTorrent protocol";
 

@@ -17,7 +17,7 @@ pub mod core_models {
 pub mod p2p {
     pub mod conn;
     pub mod handlers;
-    pub mod state;
+    pub mod models;
     pub mod task;
 }
 

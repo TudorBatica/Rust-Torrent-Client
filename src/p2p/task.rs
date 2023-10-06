@@ -10,7 +10,7 @@ use crate::core_models::entities::{Bitfield, Peer};
 use crate::core_models::events::InternalEvent;
 use crate::dependency_provider::TransferDeps;
 use crate::p2p::conn::{PeerReceiver};
-use crate::p2p::state::{P2PEvent, P2PState, P2PError};
+use crate::p2p::models::{P2PEvent, P2PState, P2PError};
 
 pub async fn spawn(peer: Peer,
                    transfer_idx: usize,

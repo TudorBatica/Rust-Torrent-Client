@@ -7,7 +7,7 @@ use crate::core_models::entities::{Bitfield, Peer};
 use crate::core_models::events::InternalEvent;
 use crate::{choke, data_collector};
 use crate::dependency_provider::TransferDeps;
-use crate::p2p::state::{P2PEvent, P2PError};
+use crate::p2p::models::{P2PEvent, P2PError};
 use crate::p2p::task;
 
 #[derive(Debug)]

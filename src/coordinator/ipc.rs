@@ -3,7 +3,7 @@ use tokio::sync::mpsc::{Sender, Receiver};
 use crate::choke::models::ChokeEvent;
 use crate::core_models::entities::DataBlock;
 use crate::core_models::events::InternalEvent;
-use crate::p2p::state::P2PEvent;
+use crate::p2p::models::P2PEvent;
 
 struct PeerTransfer {
     tx: Sender<P2PEvent>,
