@@ -7,7 +7,7 @@ use crate::core_models::entities::{Bitfield, Peer};
 use crate::core_models::events::InternalEvent;
 use crate::{choke, data_collector};
 use crate::dependency_provider::TransferDeps;
-use crate::p2p::state::{P2PInboundEvent, P2PError};
+use crate::p2p::state::{P2PEvent, P2PError};
 use crate::p2p::task;
 
 #[derive(Debug)]
@@ -41,9 +41,9 @@ pub async fn run(deps: Arc<dyn TransferDeps>, rx: Receiver<InternalEvent>) -> Re
 
 async fn spawn_p2p_tasks(deps: Arc<dyn TransferDeps>, client_bitfield: Bitfield, peers: Vec<Peer>)
                          -> (Vec<(usize, JoinHandle<Result<(), P2PError>>)>,
-                             Vec<(usize, Sender<P2PInboundEvent>)>) {
+                             Vec<(usize, Sender<P2PEvent>)>) {
     let mut p2p_handles: Vec<(usize, JoinHandle<Result<(), P2PError>>)> = vec![];
-    let mut p2p_tx: Vec<(usize, Sender<P2PInboundEvent>)> = vec![];
+    let mut p2p_tx: Vec<(usize, Sender<P2PEvent>)> = vec![];
     for (transfer_idx, peer) in peers.into_iter().enumerate() {
         let (handle, tx) = task::spawn(
             peer, transfer_idx, client_bitfield.clone(), deps.clone(),

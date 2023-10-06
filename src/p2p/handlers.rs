@@ -4,7 +4,7 @@ use crate::config;
 use crate::core_models::entities::{Bitfield, DataBlock, Message};
 use crate::core_models::events::InternalEvent;
 use crate::file_provider::FileProv;
-use crate::p2p::state::{FunnelMsg, P2PError, P2PInboundEvent, P2PState};
+use crate::p2p::state::{P2PError, P2PEvent, P2PState};
 use crate::piece_picker::{PiecePicker};
 
 const MAX_ONGOING_REQUESTS: usize = 10;
@@ -29,47 +29,43 @@ impl HandlerResult {
     }
 }
 
-pub async fn handle(msg: FunnelMsg, state: &mut P2PState, fp: &mut Box<dyn FileProv>, picker: &Arc<Mutex<dyn PiecePicker>>)
+pub async fn handle(event: P2PEvent, state: &mut P2PState, fp: &mut Box<dyn FileProv>, picker: &Arc<Mutex<dyn PiecePicker>>)
                     -> Result<HandlerResult, P2PError> {
-    return match msg {
-        FunnelMsg::InternalEvent(event) => Ok(handle_event(event, state).await),
-        FunnelMsg::PeerMessage(message) => Ok(handle_peer_message(message, state, fp, picker).await),
-        FunnelMsg::P2PFailure(error) => Err(error)
-    };
-}
-
-async fn handle_event(event: P2PInboundEvent, state: &mut P2PState) -> HandlerResult {
     let mut result = HandlerResult::new();
 
     match event {
-        P2PInboundEvent::BlockStored(block) => {
+        P2PEvent::BlockStored(block) => {
             if state.ongoing_requests.remove(&block) {
                 result.msg(Message::Cancel(block));
             }
         }
-        P2PInboundEvent::PieceStored(piece_idx) => {
+        P2PEvent::PieceStored(piece_idx) => {
             state.client_bitfield.piece_acquired(piece_idx);
             update_clients_interested_status(state, &mut result);
         }
-        P2PInboundEvent::SendKeepAlive => {
+        P2PEvent::SendKeepAlive => {
             result.msg(Message::KeepAlive);
         }
-        P2PInboundEvent::Choke => {
+        P2PEvent::ChokePeer => {
             state.peer_is_choked = true;
             result.msg(Message::Choke);
         }
-        P2PInboundEvent::Unchoke => {
+        P2PEvent::UnchokePeer => {
             state.peer_is_choked = false;
             result.msg(Message::Unchoke);
         }
+        P2PEvent::PeerMessageReceived(message) => {
+            return handle_peer_message(message, state, fp, picker).await;
+        }
     };
 
-    return result;
+    return Ok(result);
 }
 
-async fn handle_peer_message(message: Message, state: &mut P2PState, fp: &mut Box<dyn FileProv>, picker: &Arc<Mutex<dyn PiecePicker>>) -> HandlerResult {
+async fn handle_peer_message(message: Result<Message, P2PError>, state: &mut P2PState, fp: &mut Box<dyn FileProv>, picker: &Arc<Mutex<dyn PiecePicker>>)
+                             -> Result<HandlerResult, P2PError> {
     let mut result = HandlerResult::new();
-
+    let message = message?;
     match message {
         Message::KeepAlive => {}
         Message::Choke => {
@@ -133,7 +129,7 @@ async fn handle_peer_message(message: Message, state: &mut P2PState, fp: &mut Bo
         Message::Port(_) => {}
     };
 
-    return result;
+    return Ok(result);
 }
 
 fn update_clients_interested_status(state: &mut P2PState, result: &mut HandlerResult) {
@@ -171,8 +167,7 @@ mod tests {
     use crate::core_models::entities::{Bitfield, Block, DataBlock, Message};
     use crate::file_provider::{FileProv, MockFileProv};
     use crate::p2p::handlers::{handle, HandlerResult, pick_blocks, update_clients_interested_status};
-    use crate::p2p::state::P2PState;
-    use crate::p2p::state::FunnelMsg::PeerMessage;
+    use crate::p2p::state::{P2PEvent, P2PState};
     use crate::piece_picker::{MockPiecePicker, PiecePicker};
 
     #[test]
@@ -185,7 +180,7 @@ mod tests {
         update_clients_interested_status(&mut state, &mut result);
 
         assert!(state.client_is_interested);
-        assert!(result.internal_events.is_empty());
+        assert_eq!(result.internal_events.len(), 1);
         assert_eq!(result.messages_for_peer.len(), 1);
         assert!(result.messages_for_peer[0].is_interested())
     }
@@ -226,7 +221,7 @@ mod tests {
         update_clients_interested_status(&mut state, &mut result);
 
         assert!(!state.client_is_interested);
-        assert!(result.internal_events.is_empty());
+        assert_eq!(result.internal_events.len(), 1);
         assert_eq!(result.messages_for_peer.len(), 1);
         assert!(result.messages_for_peer[0].is_not_interested());
     }
@@ -291,7 +286,7 @@ mod tests {
         let (picker, mut fp) = prepare_mocks();
         state.client_is_choked = false;
 
-        let msg = PeerMessage(Message::Choke);
+        let msg = P2PEvent::PeerMessageReceived(Ok(Message::Choke));
         let _result = handle(msg, &mut state, &mut fp, &picker).await;
 
         assert!(state.client_is_choked);
@@ -303,7 +298,7 @@ mod tests {
         let (picker, mut fp) = prepare_mocks();
         state.client_is_choked = true;
 
-        let msg = PeerMessage(Message::Unchoke);
+        let msg = P2PEvent::PeerMessageReceived(Ok(Message::Unchoke));
         let _result = handle(msg, &mut state, &mut fp, &picker).await;
 
         assert!(!state.client_is_choked);
@@ -315,7 +310,7 @@ mod tests {
         let (picker, mut fp) = prepare_mocks();
         state.peer_is_interested = false;
 
-        let msg = PeerMessage(Message::Interested);
+        let msg = P2PEvent::PeerMessageReceived(Ok(Message::Interested));
         let _result = handle(msg, &mut state, &mut fp, &picker).await;
 
         assert!(state.peer_is_interested);
@@ -327,7 +322,7 @@ mod tests {
         let (picker, mut fp) = prepare_mocks();
         state.peer_is_interested = true;
 
-        let msg = PeerMessage(Message::NotInterested);
+        let msg = P2PEvent::PeerMessageReceived(Ok(Message::NotInterested));
         let _result = handle(msg, &mut state, &mut fp, &picker).await;
 
         assert!(!state.peer_is_interested);
@@ -338,7 +333,7 @@ mod tests {
         let mut state = P2PState::new(0, Bitfield::init(5), 5);
         let (picker, mut fp) = prepare_mocks();
 
-        let msg = PeerMessage(Message::Have(2));
+        let msg = P2PEvent::PeerMessageReceived(Ok(Message::Have(2)));
         let _result = handle(msg, &mut state, &mut fp, &picker).await;
 
         assert!(state.peer_bitfield.has_piece(2));
@@ -349,7 +344,7 @@ mod tests {
         let mut state = P2PState::new(0, Bitfield::init(5), 5);
         let (picker, mut fp) = prepare_mocks();
 
-        let msg = PeerMessage(Message::Bitfield(vec![1]));
+        let msg = P2PEvent::PeerMessageReceived(Ok(Message::Bitfield(vec![1])));
         let _result = handle(msg, &mut state, &mut fp, &picker).await;
 
         assert_eq!(state.peer_bitfield.content, vec![1]);
@@ -363,7 +358,7 @@ mod tests {
         state.client_bitfield.piece_acquired(0);
         let (picker, mut fp) = prepare_mocks();
 
-        let msg = PeerMessage(Message::Request(Block::new(0, 0, config::BLOCK_SIZE_BYTES)));
+        let msg = P2PEvent::PeerMessageReceived(Ok(Message::Request(Block::new(0, 0, config::BLOCK_SIZE_BYTES))));
         let result = handle(msg, &mut state, &mut fp, &picker).await.unwrap();
 
         assert!(result.messages_for_peer.iter().any(|msg| msg.is_piece()));
@@ -378,7 +373,7 @@ mod tests {
         state.ongoing_requests.insert(Block::new(0, 0, 0));
         let (picker, mut fp) = prepare_mocks();
 
-        let msg = PeerMessage(Message::Piece(DataBlock::new(0, 0, vec![])));
+        let msg = P2PEvent::PeerMessageReceived(Ok(Message::Piece(DataBlock::new(0, 0, vec![]))));
         let result = handle(msg, &mut state, &mut fp, &picker).await.unwrap();
 
         assert!(state.ongoing_requests.is_empty());

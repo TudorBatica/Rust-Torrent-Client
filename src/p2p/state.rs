@@ -40,18 +40,12 @@ pub enum P2PError {
 
 // Events that can be received by a p2p transfer task
 #[derive(Clone)]
-pub enum P2PInboundEvent {
+pub enum P2PEvent {
     BlockStored(Block),
     PieceStored(usize),
     SendKeepAlive,
-    Choke,
-    Unchoke
+    ChokePeer,
+    UnchokePeer,
+    PeerMessageReceived(Result<Message, P2PError>),
 }
 
-// Helper enum that models all the possible incoming messages for a p2p transfer task
-#[derive(Clone)]
-pub enum FunnelMsg {
-    InternalEvent(P2PInboundEvent),
-    PeerMessage(Message),
-    P2PFailure(P2PError),
-}
