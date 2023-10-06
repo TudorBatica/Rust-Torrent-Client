@@ -13,7 +13,7 @@ const OPTIMISTIC_UNCHOKE_INTERVAL_SECS: u64 = 30;
 
 pub async fn spawn(output_tx: Sender<InternalEvent>, peer_transfers_count: usize)
                -> (JoinHandle<()>, Sender<ChokeEvent>) {
-    let (tx_to_self, rx) = mpsc::channel::<ChokeEvent>(2048);
+    let (tx_to_self, rx) = mpsc::channel::<ChokeEvent>(1024);
     let tx_to_self_clone = tx_to_self.clone();
     let handle = tokio::spawn(async move {
         return run(output_tx, tx_to_self_clone, rx, peer_transfers_count).await;

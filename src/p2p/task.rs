@@ -4,11 +4,12 @@ use tokio::sync::{mpsc};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
 use tokio::time;
+use tokio::time::timeout;
 use crate::{p2p};
 use crate::core_models::entities::{Bitfield, Peer};
 use crate::core_models::events::InternalEvent;
 use crate::dependency_provider::TransferDeps;
-use crate::p2p::conn::{PeerReceiver};
+use crate::p2p::conn::{PeerReceiver, PeerSender};
 use crate::p2p::state::{FunnelMsg, P2PInboundEvent, P2PState, P2PError};
 
 pub async fn spawn(peer: Peer,
@@ -16,7 +17,7 @@ pub async fn spawn(peer: Peer,
                    client_bitfield: Bitfield,
                    deps: Arc<dyn TransferDeps>,
 ) -> (JoinHandle<Result<(), P2PError>>, Sender<P2PInboundEvent>) {
-    let (tx_to_self, rx) = mpsc::channel::<P2PInboundEvent>(2048);
+    let (tx_to_self, rx) = mpsc::channel::<P2PInboundEvent>(8192);
     let state = P2PState::new(transfer_idx, client_bitfield, deps.torrent_layout().pieces);
 
     let handle = tokio::spawn(async move {
@@ -30,14 +31,23 @@ async fn run(peer: Peer,
              deps: Arc<dyn TransferDeps>,
              mut state: P2PState,
              rx: Receiver<P2PInboundEvent>) -> Result<(), P2PError> {
-    let client_id = deps.client_config().client_id;
-    let info_hash = deps.info_hash();
-    let connector = deps.peer_connector();
     let output_tx = deps.output_tx();
     let picker = deps.piece_picker();
     let mut file_provider = deps.file_provider();
 
-    let (read_conn, mut write_conn) = match connector.connect_to(peer, info_hash, client_id).await {
+    let connection = timeout(
+        Duration::from_secs(10),
+        deps.peer_connector().connect_to(peer, deps.info_hash(), deps.client_config().client_id),
+    ).await;
+    let connection = match connection {
+        Ok(conn_result) => { conn_result }
+        Err(err) => {
+            println!("P2P Transfer {} terminated due to {:?}", state.transfer_idx, err);
+            output_tx.send(InternalEvent::P2PTransferTerminated(state.transfer_idx)).await.unwrap();
+            return Err(P2PError::TCPConnectionNotEstablished);
+        }
+    };
+    let (read_conn, mut write_conn) = match connection {
         Ok((read, write)) => { (read, write) }
         Err(err) => {
             println!("P2P Transfer {} terminated due to {:?}", state.transfer_idx, err);
@@ -46,6 +56,7 @@ async fn run(peer: Peer,
         }
     };
 
+    output_tx.send(InternalEvent::PeerConnectionEstablished(state.transfer_idx)).await.unwrap();
     file_provider.open_read_only_instance().await;
 
     // start p2p and internal events listeners and merge them into one
@@ -68,7 +79,7 @@ async fn run(peer: Peer,
                 }
             }
             Err(err) => {
-                println!("P2P Transfer terminated due to {:?}", err);
+                println!("P2P Transfer {} terminated due to {:?}", state.transfer_idx, err);
                 output_tx.send(InternalEvent::P2PTransferTerminated(state.transfer_idx)).await.unwrap();
                 events_handle.abort();
                 keepalive_handle.abort();

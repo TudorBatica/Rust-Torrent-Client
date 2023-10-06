@@ -13,6 +13,7 @@ pub enum InternalEvent {
     UnchokePeer(usize),
     ClientInterestedInPeer(usize, bool),
     PeerInterestedInClient(usize, bool),
+    PeerConnectionEstablished(usize),
 }
 
 impl InternalEvent {

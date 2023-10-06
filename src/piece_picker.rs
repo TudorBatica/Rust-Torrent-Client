@@ -168,7 +168,7 @@ impl PiecePicker for RarestPiecePicker {
                 match event {
                     PickEvent::FirstPickedBlocks => {
                         self.update_priority(piece_idx, SOME_BLOCKS_PICKED_BONUS)
-                    },
+                    }
                     PickEvent::AllBlocksPicked => self.update_priority(piece_idx, ALL_BLOCKS_PICKED_PENALTY - SOME_BLOCKS_PICKED_BONUS),
                 }
             }

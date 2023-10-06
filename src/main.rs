@@ -18,7 +18,7 @@ async fn main() {
     create_output_files(&layout);
 
     // prepare shared dependencies
-    let (coordinator_tx, coordinator_rx) = mpsc::channel(8192);
+    let (coordinator_tx, coordinator_rx) = mpsc::channel(1024);
     let deps = DependencyProvider::init(config, torrent, layout, coordinator_tx);
 
     let result = rust_torrent_client::coordinator::task::run(Arc::new(deps), coordinator_rx).await;

@@ -40,16 +40,16 @@ pub async fn run(deps: Arc<dyn TransferDeps>, rx: Receiver<InternalEvent>) -> Re
 }
 
 async fn spawn_p2p_tasks(deps: Arc<dyn TransferDeps>, client_bitfield: Bitfield, peers: Vec<Peer>)
-                         -> (HashMap<usize, JoinHandle<Result<(), P2PError>>>,
-                             HashMap<usize, Sender<P2PInboundEvent>>) {
-    let mut p2p_handles: HashMap<usize, JoinHandle<Result<(), P2PError>>> = HashMap::new();
-    let mut p2p_tx: HashMap<usize, Sender<P2PInboundEvent>> = HashMap::new();
+                         -> (Vec<(usize, JoinHandle<Result<(), P2PError>>)>,
+                             Vec<(usize, Sender<P2PInboundEvent>)>) {
+    let mut p2p_handles: Vec<(usize, JoinHandle<Result<(), P2PError>>)> = vec![];
+    let mut p2p_tx: Vec<(usize, Sender<P2PInboundEvent>)> = vec![];
     for (transfer_idx, peer) in peers.into_iter().enumerate() {
         let (handle, tx) = task::spawn(
             peer, transfer_idx, client_bitfield.clone(), deps.clone(),
         ).await;
-        p2p_handles.insert(transfer_idx, handle);
-        p2p_tx.insert(transfer_idx, tx);
+        p2p_handles.push((transfer_idx, handle));
+        p2p_tx.push((transfer_idx, tx));
     }
 
     return (p2p_handles, p2p_tx);

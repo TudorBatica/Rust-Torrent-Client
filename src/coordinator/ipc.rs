@@ -5,11 +5,29 @@ use crate::core_models::entities::DataBlock;
 use crate::core_models::events::InternalEvent;
 use crate::p2p::state::P2PInboundEvent;
 
+struct PeerTransfer {
+    tx: Sender<P2PInboundEvent>,
+    is_connected: bool,
+}
+
+impl PeerTransfer {
+    fn new(tx: Sender<P2PInboundEvent>) -> Self {
+        return PeerTransfer {
+            tx,
+            is_connected: false,
+        };
+    }
+}
+
+
 pub async fn broadcast_events(mut rx: Receiver<InternalEvent>,
                               choke_tx: Sender<ChokeEvent>,
                               data_collector_tx: Sender<DataBlock>,
-                              mut p2p_tx: HashMap<usize, Sender<P2PInboundEvent>>,
+                              mut p2p_tx: Vec<(usize, Sender<P2PInboundEvent>)>,
 ) {
+    let mut p2p_transfers: HashMap<usize, PeerTransfer> = p2p_tx.into_iter()
+        .map(|(idx, tx)| (idx, PeerTransfer::new(tx)))
+        .collect();
     while let Some(event) = rx.recv().await {
         match event {
             InternalEvent::BlockDownloaded(transfer_idx, block) => {
@@ -17,32 +35,32 @@ pub async fn broadcast_events(mut rx: Receiver<InternalEvent>,
                 data_collector_tx.send(block).await.unwrap();
             }
             InternalEvent::BlockStored(block) => {
-                for (_, tx) in p2p_tx.iter() {
-                    let _ = tx.send(P2PInboundEvent::BlockStored(block.clone())).await;
+                for peer in p2p_transfers.values().filter(|peer| peer.is_connected) {
+                    let _ = peer.tx.send(P2PInboundEvent::BlockStored(block.clone())).await;
                 }
             }
             InternalEvent::DownloadComplete => {
                 break;
             }
             InternalEvent::PieceStored(piece_idx) => {
-                for (_, tx) in p2p_tx.iter() {
-                    let _ = tx.send(P2PInboundEvent::PieceStored(piece_idx)).await;
+                for (_, peer) in p2p_transfers.iter() {
+                    let _ = peer.tx.send(P2PInboundEvent::PieceStored(piece_idx)).await;
                 }
             }
             InternalEvent::P2PTransferTerminated(transfer_idx) => {
-                p2p_tx.remove(&transfer_idx);
+                p2p_transfers.remove(&transfer_idx);
                 choke_tx.send(ChokeEvent::UnregisterPeer(transfer_idx)).await.unwrap();
             }
             InternalEvent::ChokePeer(transfer_idx) => {
-                match p2p_tx.get(&transfer_idx) {
+                match p2p_transfers.get(&transfer_idx) {
                     None => {}
-                    Some(tx) => { let _ = tx.send(P2PInboundEvent::Choke).await; }
+                    Some(peer) => { let _ = peer.tx.send(P2PInboundEvent::Choke).await; }
                 }
             }
             InternalEvent::UnchokePeer(transfer_idx) => {
-                match p2p_tx.get(&transfer_idx) {
+                match p2p_transfers.get(&transfer_idx) {
                     None => {}
-                    Some(tx) => { let _ = tx.send(P2PInboundEvent::Unchoke).await; }
+                    Some(peer) => { let _ = peer.tx.send(P2PInboundEvent::Unchoke).await; }
                 }
             }
             InternalEvent::ClientInterestedInPeer(idx, interested) => {
@@ -50,6 +68,12 @@ pub async fn broadcast_events(mut rx: Receiver<InternalEvent>,
             }
             InternalEvent::PeerInterestedInClient(idx, interested) => {
                 choke_tx.send(ChokeEvent::PeerInterestedInClient(idx, interested)).await.unwrap()
+            }
+            InternalEvent::PeerConnectionEstablished(idx) => {
+                match p2p_transfers.get_mut(&idx) {
+                    None => {}
+                    Some(peer) => { peer.is_connected = true; }
+                }
             }
         }
     }

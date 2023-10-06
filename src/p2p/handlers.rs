@@ -151,14 +151,13 @@ fn update_clients_interested_status(state: &mut P2PState, result: &mut HandlerRe
 
 async fn pick_blocks(state: &mut P2PState, result: &mut HandlerResult, picker: &Arc<Mutex<dyn PiecePicker>>) {
     let blocks_to_request = MAX_ONGOING_REQUESTS - state.ongoing_requests.len();
-    if blocks_to_request < 1 || state.client_is_choked || !state.client_is_interested {
+    if blocks_to_request < 3 || state.client_is_choked || !state.client_is_interested {
         return;
     }
     let blocks = {
         let mut picker = picker.lock().await;
         picker.pick(&state.peer_bitfield, blocks_to_request)
     };
-
     state.ongoing_requests.extend(blocks.clone().into_iter());
     blocks.into_iter().for_each(|block| result.msg(Message::Request(block)));
 }

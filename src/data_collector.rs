@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::Duration;
 use sha1::{Digest, Sha1};
 use tokio::sync::{mpsc};
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -10,8 +11,7 @@ use crate::core_models::events::InternalEvent;
 use crate::file_provider::{FileProv};
 
 pub async fn spawn(deps: Arc<dyn TransferDeps>) -> (JoinHandle<()>, Sender<DataBlock>) {
-    println!("Data Collector :: spawning task");
-    let (tx_to_self, rx) = mpsc::channel::<DataBlock>(2048);
+    let (tx_to_self, rx) = mpsc::channel::<DataBlock>(1024);
     let handle = tokio::spawn(async move {
         run(deps.clone(), rx).await;
     });

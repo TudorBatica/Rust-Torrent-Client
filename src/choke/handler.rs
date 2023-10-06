@@ -18,7 +18,6 @@ pub fn handle(event: ChokeEvent, peers: &mut HashMap<usize, PeerState>) -> Vec<I
             vec![]
         }
         ChokeEvent::PeerInterestedInClient(idx, interested) => {
-            println!("peer {} interested in client", idx);
             peers.get_mut(&idx).unwrap().peer_interested_in_client = interested;
             vec![]
         }
@@ -61,11 +60,6 @@ fn unchoke_peers(peers: &mut HashMap<usize, PeerState>) -> Vec<InternalEvent> {
         if !currently_unchoked.contains(&top_peer) {
             output_events.push(InternalEvent::UnchokePeer(*top_peer));
         }
-    }
-
-    println!("Top peers:");
-    for peer in top_peers {
-        println!("{} with {}", peer, peers.get(&peer).unwrap().downloaded_blocks);
     }
 
     peers.into_iter().for_each(|(_idx, peer)| peer.downloaded_blocks = 0);
