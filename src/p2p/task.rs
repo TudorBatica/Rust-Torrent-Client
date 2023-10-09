@@ -9,7 +9,7 @@ use crate::{p2p};
 use crate::core_models::entities::{Bitfield, Peer};
 use crate::core_models::events::InternalEvent;
 use crate::dependency_provider::TransferDeps;
-use crate::p2p::conn::{PeerReceiver};
+use crate::p2p::conn::{PeerReceiver, PeerSender};
 use crate::p2p::models::{P2PEvent, P2PState, P2PError};
 
 pub async fn spawn(peer: Peer,
@@ -37,19 +37,7 @@ async fn run(peer: Peer,
     let picker = deps.piece_picker();
     let mut file_provider = deps.file_provider();
 
-    let connection = timeout(
-        Duration::from_secs(10),
-        deps.peer_connector().connect_to(peer, deps.info_hash(), deps.client_config().client_id),
-    ).await;
-    let connection = match connection {
-        Ok(conn_result) => { conn_result }
-        Err(err) => {
-            println!("P2P Transfer {} terminated due to {:?}", state.transfer_idx, err);
-            output_tx.send(InternalEvent::P2PTransferTerminated(state.transfer_idx)).await.unwrap();
-            return Err(P2PError::TCPConnectionNotEstablished);
-        }
-    };
-    let (read_conn, mut write_conn) = match connection {
+    let (read_conn, mut write_conn) = match connect_to_peer(&deps, peer).await {
         Ok((read, write)) => { (read, write) }
         Err(err) => {
             println!("P2P Transfer {} terminated due to {:?}", state.transfer_idx, err);
@@ -109,4 +97,17 @@ async fn keep_alive_event_scheduler(tx: Sender<P2PEvent>) {
         interval.tick().await;
         tx.send(P2PEvent::SendKeepAlive).await.unwrap();
     }
+}
+
+async fn connect_to_peer(deps: &Arc<dyn TransferDeps>, peer: Peer)
+                         -> Result<(Box<dyn PeerReceiver>, Box<dyn PeerSender>), P2PError> {
+    let connection = timeout(
+        Duration::from_secs(10),
+        deps.peer_connector().connect_to(peer, deps.info_hash(), deps.client_config().client_id),
+    ).await;
+
+    return match connection {
+        Ok(conn_result) => conn_result,
+        Err(_) => return Err(P2PError::TCPConnectionNotEstablished),
+    };
 }
