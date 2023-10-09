@@ -23,7 +23,7 @@ impl PeerTransfer {
 pub async fn broadcast_events(mut rx: Receiver<InternalEvent>,
                               choke_tx: Sender<ChokeEvent>,
                               data_collector_tx: Sender<DataBlock>,
-                              mut p2p_tx: Vec<(usize, Sender<P2PEvent>)>,
+                              p2p_tx: Vec<(usize, Sender<P2PEvent>)>,
 ) {
     let mut p2p_transfers: HashMap<usize, PeerTransfer> = p2p_tx.into_iter()
         .map(|(idx, tx)| (idx, PeerTransfer::new(tx)))
