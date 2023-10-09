@@ -7,7 +7,7 @@ use crate::core_models::events::InternalEvent;
 use crate::file_provider::{FileProv, TokioFileProv};
 use crate::p2p::conn::{PeerConnector, TCPPeerConnector};
 use crate::piece_picker::{PiecePicker, RarestPiecePicker};
-use crate::tracker::{TorrentTrackerClient, TrackerClient};
+use crate::tracker::client::{TorrentTrackerClient, TrackerClient};
 
 pub trait TransferDeps: Send + Sync {
     fn announce_url(&self) -> String;
@@ -84,11 +84,7 @@ impl TransferDeps for DependencyProvider {
     }
 
     fn tracker_client(&self) -> Box<dyn TrackerClient> {
-        let client = TorrentTrackerClient {
-            announce_url: self.torrent.announce.clone(),
-            client_config: self.client_config.clone(),
-            info_hash: self.torrent.info_hash.clone(),
-        };
+        let client = TorrentTrackerClient::new(&self.torrent, self.client_config.clone());
         return Box::new(client);
     }
 }

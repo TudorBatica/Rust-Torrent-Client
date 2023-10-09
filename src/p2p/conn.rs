@@ -61,7 +61,7 @@ pub struct TCPPeerConnector {}
 impl PeerConnector for TCPPeerConnector {
     async fn connect_to(&self, peer: Peer, info_hash: Vec<u8>, client_id: String) -> Result<(Box<dyn PeerReceiver>, Box<dyn PeerSender>), P2PError> {
         let mut tcp_stream = establish_tcp_connection(&peer).await?;
-        send_handshake(&mut tcp_stream, &peer, &info_hash, &client_id).await?;
+        send_handshake(&mut tcp_stream, &info_hash, &client_id).await?;
         receive_handshake(&mut tcp_stream).await?;
 
         let (read_stream, write_stream) = io::split(tcp_stream);
@@ -106,7 +106,7 @@ async fn read_from_stream<T: AsyncRead + Unpin>(stream: &mut T, mut num_of_bytes
     }
 }
 
-async fn send_handshake(stream: &mut TcpStream, peer: &Peer, info_hash: &Vec<u8>, client_id: &String) -> Result<(), P2PError> {
+async fn send_handshake(stream: &mut TcpStream, info_hash: &Vec<u8>, client_id: &String) -> Result<(), P2PError> {
     let mut handshake: Vec<u8> = Vec::with_capacity(49 + PROTOCOL.len());
     //pstrlen
     handshake.push(PROTOCOL.len() as u8);

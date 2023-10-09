@@ -21,6 +21,11 @@ pub mod p2p {
     pub mod task;
 }
 
+pub mod tracker {
+    pub mod client;
+    pub mod task;
+}
+
 pub mod config;
 pub mod data_collector;
 pub mod dependency_provider;
@@ -28,7 +33,6 @@ pub mod file_provider;
 pub mod mocks;
 pub mod piece_picker;
 pub mod torrent_parser;
-pub mod tracker;
 
 
 

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender};
-use std::collections::HashMap;
 use tokio::task::JoinHandle;
 use crate::coordinator::ipc;
 use crate::core_models::entities::{Bitfield, Peer};
@@ -9,6 +8,7 @@ use crate::{choke, data_collector};
 use crate::dependency_provider::TransferDeps;
 use crate::p2p::models::{P2PEvent, P2PError};
 use crate::p2p::task;
+use crate::tracker::client::TrackerRequestEvent;
 
 #[derive(Debug)]
 pub enum TransferError {
@@ -21,7 +21,7 @@ pub async fn run(deps: Arc<dyn TransferDeps>, rx: Receiver<InternalEvent>) -> Re
     let layout = deps.torrent_layout();
     let client_bitfield = Bitfield::init(layout.pieces);
 
-    let tracker_resp = match tracker_client.announce().await {
+    let tracker_resp = match tracker_client.announce(TrackerRequestEvent::Started).await {
         Ok(resp) => resp,
         Err(err) => {
             println!("Initial announce failed {:?}", err);

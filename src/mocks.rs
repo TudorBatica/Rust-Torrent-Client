@@ -12,7 +12,7 @@ use crate::core_models::events::InternalEvent;
 use crate::file_provider::{FileProv, TempFileProv};
 use crate::p2p::conn::PeerConnector;
 use crate::piece_picker::{PiecePicker, RarestPiecePicker};
-use crate::tracker::{TrackerClient};
+use crate::tracker::client::TrackerClient;
 
 pub fn generate_mock_layout(num_of_pieces: usize, blocks_in_head_pieces: usize, blocks_in_last_piece: usize) -> TorrentLayout {
     let piece_len = config::BLOCK_SIZE_BYTES * blocks_in_head_pieces;
@@ -151,7 +151,7 @@ impl TransferDeps for MockDepsProvider {
     }
 
     fn tracker_client(&self) -> Box<dyn TrackerClient> {
-        let client = crate::tracker::MockTrackerClient::new();
+        let client = crate::tracker::client::MockTrackerClient::new();
         return Box::new(client);
     }
 }
