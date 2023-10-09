@@ -112,6 +112,7 @@ async fn handle_peer_message(message: Result<Message, P2PError>, state: &mut P2P
                 println!("Received a REQUEST message for a piece {} which is not currently owned! ", block.piece_idx);
             } else {
                 let data = fp.read_block(&block).await;
+                result.event(InternalEvent::BlockUploaded(data.len()));
                 result.msg(Message::Piece(DataBlock::new(block.piece_idx, block.offset, data)));
             }
         }

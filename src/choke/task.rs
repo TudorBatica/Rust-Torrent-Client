@@ -11,7 +11,7 @@ use crate::core_models::events::InternalEvent;
 const CHANGE_UNCHOKED_PEERS_INTERVAL_SECS: u64 = 10;
 const OPTIMISTIC_UNCHOKE_INTERVAL_SECS: u64 = 30;
 
-pub async fn spawn(output_tx: Sender<InternalEvent>, peer_transfers_count: usize)
+pub fn spawn(output_tx: Sender<InternalEvent>, peer_transfers_count: usize)
                -> (JoinHandle<()>, Sender<ChokeEvent>) {
     let (tx_to_self, rx) = mpsc::channel::<ChokeEvent>(1024);
     let tx_to_self_clone = tx_to_self.clone();

@@ -5,6 +5,7 @@ pub type TransferIdx = usize;
 #[derive(Debug, Eq, PartialEq)]
 pub enum InternalEvent {
     BlockDownloaded(usize, DataBlock),
+    BlockUploaded(usize),
     BlockStored(Block),
     ChokePeer(usize),
     DownloadComplete,

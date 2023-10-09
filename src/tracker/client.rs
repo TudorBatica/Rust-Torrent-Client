@@ -10,14 +10,14 @@ use mockall::automock;
 
 #[async_trait]
 #[automock]
-pub trait TrackerClient {
+pub trait TrackerClient: Send + Sync {
     async fn announce(&self, event: TrackerRequestEvent) -> Result<TrackerResponse, Box<dyn Error>>;
 }
 
 pub enum TrackerRequestEvent {
     Started,
-    Regular(usize, usize),
-    Completed(usize, usize),
+    Regular(u64, u64),
+    Completed(u64, u64),
 }
 
 impl TrackerRequestEvent {

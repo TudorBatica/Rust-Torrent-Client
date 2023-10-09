@@ -12,7 +12,7 @@ use crate::dependency_provider::TransferDeps;
 use crate::p2p::conn::{PeerReceiver, PeerSender};
 use crate::p2p::models::{P2PEvent, P2PState, P2PError};
 
-pub async fn spawn(peer: Peer,
+pub fn spawn(peer: Peer,
                    transfer_idx: usize,
                    client_bitfield: Bitfield,
                    deps: Arc<dyn TransferDeps>,

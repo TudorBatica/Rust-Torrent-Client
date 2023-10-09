@@ -4,6 +4,7 @@ use crate::choke::models::ChokeEvent;
 use crate::core_models::entities::DataBlock;
 use crate::core_models::events::InternalEvent;
 use crate::p2p::models::P2PEvent;
+use crate::tracker::task::TrackerEvent;
 
 struct PeerTransfer {
     tx: Sender<P2PEvent>,
@@ -24,6 +25,7 @@ pub async fn broadcast_events(mut rx: Receiver<InternalEvent>,
                               choke_tx: Sender<ChokeEvent>,
                               data_collector_tx: Sender<DataBlock>,
                               p2p_tx: Vec<(usize, Sender<P2PEvent>)>,
+                              tracker_tx: Sender<TrackerEvent>,
 ) {
     let mut p2p_transfers: HashMap<usize, PeerTransfer> = p2p_tx.into_iter()
         .map(|(idx, tx)| (idx, PeerTransfer::new(tx)))
@@ -32,6 +34,7 @@ pub async fn broadcast_events(mut rx: Receiver<InternalEvent>,
         match event {
             InternalEvent::BlockDownloaded(transfer_idx, block) => {
                 choke_tx.send(ChokeEvent::BlockDownloadedFromPeer(transfer_idx)).await.unwrap();
+                tracker_tx.send(TrackerEvent::Downloaded(block.data.len() as u64)).await.unwrap();
                 data_collector_tx.send(block).await.unwrap();
             }
             InternalEvent::BlockStored(block) => {
@@ -74,6 +77,9 @@ pub async fn broadcast_events(mut rx: Receiver<InternalEvent>,
                     None => {}
                     Some(peer) => { peer.is_connected = true; }
                 }
+            }
+            InternalEvent::BlockUploaded(size) => {
+                tracker_tx.send(TrackerEvent::Uploaded(size as u64)).await.unwrap();
             }
         }
     }
