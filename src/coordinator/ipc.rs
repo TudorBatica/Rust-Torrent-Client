@@ -43,6 +43,7 @@ pub async fn broadcast_events(mut rx: Receiver<InternalEvent>,
                 }
             }
             InternalEvent::DownloadComplete => {
+                tracker_tx.send(TrackerEvent::CompletedAnnounce).await.unwrap();
                 break;
             }
             InternalEvent::PieceStored(piece_idx) => {

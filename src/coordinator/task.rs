@@ -26,9 +26,10 @@ pub async fn run(deps: Arc<dyn TransferDeps>, rx: Receiver<InternalEvent>) -> Re
     let (_data_collector_handle, data_collector_tx) = data_collector::spawn(deps.clone());
     let (_p2p_handles, p2p_tx) = spawn_p2p_tasks(deps.clone(), client_bitfield.clone(), tracker_resp.peers);
     let (_choke_handle, choke_tx) = choke::task::spawn(deps.output_tx().clone(), p2p_tx.len());
-    let (_tracker_handle, tracker_tx) = tracker::task::spawn(tracker_client, tracker_resp.interval);
+    let (tracker_handle, tracker_tx) = tracker::task::spawn(tracker_client, tracker_resp.interval);
 
     ipc::broadcast_events(rx, choke_tx, data_collector_tx, p2p_tx, tracker_tx).await;
+    let _ = tracker_handle.await;
     println!("transfer completed at... {}", chrono::prelude::Utc::now());
 
     return Ok(());
