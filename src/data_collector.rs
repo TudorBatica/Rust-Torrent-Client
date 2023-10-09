@@ -9,7 +9,7 @@ use crate::core_models::entities::{Block, DataBlock, TorrentLayout};
 use crate::core_models::events::InternalEvent;
 use crate::file_provider::{FileProv};
 
-pub async fn spawn(deps: Arc<dyn TransferDeps>) -> (JoinHandle<()>, Sender<DataBlock>) {
+pub fn spawn(deps: Arc<dyn TransferDeps>) -> (JoinHandle<()>, Sender<DataBlock>) {
     let (tx_to_self, rx) = mpsc::channel::<DataBlock>(1024);
     let handle = tokio::spawn(async move {
         run(deps.clone(), rx).await;
