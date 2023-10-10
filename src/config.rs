@@ -1,3 +1,4 @@
+use log::LevelFilter;
 use rand::distributions::Alphanumeric;
 use rand::Rng;
 
@@ -12,6 +13,9 @@ pub struct Config {
 
 impl Config {
     pub fn init() -> Self {
+        env_logger::Builder::new()
+            .filter_level(LevelFilter::Info)
+            .target(env_logger::Target::Stderr).init();
         return Config {
             listening_port: 42000,
             client_id: Config::generate_client_id(),

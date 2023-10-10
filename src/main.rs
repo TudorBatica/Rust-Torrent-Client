@@ -21,11 +21,7 @@ async fn main() {
     let (coordinator_tx, coordinator_rx) = mpsc::channel(1024);
     let deps = DependencyProvider::init(config, torrent, layout, coordinator_tx);
 
-    let result = rust_torrent_client::coordinator::task::run(Arc::new(deps), coordinator_rx).await;
-    match result {
-        Ok(_) => println!("Transfer completed!"),
-        Err(err) => println!("Transfer failed with error {:?}", err)
-    }
+    let _ = rust_torrent_client::coordinator::task::run(Arc::new(deps), coordinator_rx).await;
 }
 
 fn create_output_files(layout: &TorrentLayout) {

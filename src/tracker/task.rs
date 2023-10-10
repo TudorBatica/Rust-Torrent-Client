@@ -35,11 +35,9 @@ async fn run(tx_to_self: Sender<TrackerEvent>, mut rx: Receiver<TrackerEvent>,
             TrackerEvent::Downloaded(size) => downloaded += size,
             TrackerEvent::Uploaded(size) => uploaded += size,
             TrackerEvent::RegularAnnounce => {
-                println!("Regular announce: up {} down {}", uploaded, downloaded);
                 let _ = client.announce(TrackerRequestEvent::Regular(downloaded, uploaded)).await;
             }
             TrackerEvent::CompletedAnnounce => {
-                println!("Completed announce: up {} down {}", uploaded, downloaded);
                 let _ = client.announce(TrackerRequestEvent::Completed(downloaded, uploaded)).await;
                 regular_announce_handle.abort();
                 break;

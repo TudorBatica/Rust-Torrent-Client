@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use log::{error, info};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
 use crate::coordinator::ipc;
@@ -16,7 +17,8 @@ pub enum TransferError {
 }
 
 pub async fn run(deps: Arc<dyn TransferDeps>, rx: Receiver<InternalEvent>) -> Result<(), TransferError> {
-    println!("starting transfer at... {}", chrono::prelude::Utc::now());
+    info!("Starting transfer at... {}", chrono::prelude::Utc::now());
+
     let tracker_client = deps.tracker_client();
     let layout = deps.torrent_layout();
     let client_bitfield = Bitfield::init(layout.pieces);
@@ -30,7 +32,8 @@ pub async fn run(deps: Arc<dyn TransferDeps>, rx: Receiver<InternalEvent>) -> Re
 
     ipc::broadcast_events(rx, choke_tx, data_collector_tx, p2p_tx, tracker_tx).await;
     let _ = tracker_handle.await;
-    println!("transfer completed at... {}", chrono::prelude::Utc::now());
+
+    info!("Transfer completed at... {}", chrono::prelude::Utc::now());
 
     return Ok(());
 }
@@ -39,7 +42,7 @@ async fn call_initial_announce(client: &Box<dyn TrackerClient>) -> Result<Tracke
     return match client.announce(TrackerRequestEvent::Started).await {
         Ok(resp) => Ok(resp),
         Err(err) => {
-            println!("Initial announce failed {:?}", err);
+            error!("Initial announce failed {:?}", err);
             return Err(TransferError::TrackerCallFailed(err.to_string()));
         }
     };

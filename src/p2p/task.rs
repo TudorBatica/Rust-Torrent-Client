@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
+use log::warn;
 use tokio::sync::{mpsc};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
@@ -40,7 +41,7 @@ async fn run(peer: Peer,
     let (read_conn, mut write_conn) = match connect_to_peer(&deps, peer).await {
         Ok((read, write)) => { (read, write) }
         Err(err) => {
-            println!("P2P Transfer {} terminated due to {:?}", state.transfer_idx, err);
+            warn!("P2P Transfer {} terminated due to {:?}", state.transfer_idx, err);
             output_tx.send(InternalEvent::P2PTransferTerminated(state.transfer_idx)).await.unwrap();
             return Err(err);
         }
@@ -66,7 +67,7 @@ async fn run(peer: Peer,
                 }
             }
             Err(err) => {
-                println!("P2P Transfer {} terminated due to {:?}", state.transfer_idx, err);
+                warn!("P2P Transfer {} terminated due to {:?}", state.transfer_idx, err);
                 output_tx.send(InternalEvent::P2PTransferTerminated(state.transfer_idx)).await.unwrap();
                 keep_alive_handler.abort();
                 return Err(err);

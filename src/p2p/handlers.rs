@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use log::warn;
 use tokio::sync::Mutex;
 use crate::config;
 use crate::core_models::entities::{Bitfield, DataBlock, Message};
@@ -69,11 +70,9 @@ async fn handle_peer_message(message: Result<Message, P2PError>, state: &mut P2P
     match message {
         Message::KeepAlive => {}
         Message::Choke => {
-            println!("Choked by {}", state.transfer_idx);
             state.client_is_choked = true;
         }
         Message::Unchoke => {
-            println!("Unchoked by {}", state.transfer_idx);
             state.client_is_choked = false;
             pick_blocks(state, &mut result, &picker).await;
         }
@@ -105,11 +104,11 @@ async fn handle_peer_message(message: Result<Message, P2PError>, state: &mut P2P
         }
         Message::Request(block) => {
             if block.length > config::BLOCK_SIZE_BYTES {
-                println!("Received a REQUEST message with a length exceeding 16kb!");
+                warn!("Received a REQUEST message with a length exceeding 16kb!");
             } else if state.peer_is_choked || !state.peer_is_interested {
-                println!("Received a bad REQUEST message: peer choked: {}, interested: {}", state.peer_is_choked, state.peer_is_interested);
+                warn!("Received a bad REQUEST message: peer choked: {}, interested: {}", state.peer_is_choked, state.peer_is_interested);
             } else if !state.client_bitfield.has_piece(block.piece_idx) {
-                println!("Received a REQUEST message for a piece {} which is not currently owned! ", block.piece_idx);
+                warn!("Received a REQUEST message for a piece {} which is not currently owned! ", block.piece_idx);
             } else {
                 let data = fp.read_block(&block).await;
                 result.event(InternalEvent::BlockUploaded(data.len()));

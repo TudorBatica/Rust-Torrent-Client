@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use log::{info, warn};
 use sha1::{Digest, Sha1};
 use tokio::sync::{mpsc};
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -45,7 +46,7 @@ async fn run(deps: Arc<dyn TransferDeps>, mut rx: Receiver<DataBlock>) {
             }
             tx.send(InternalEvent::BlockStored(data_block.to_block())).await.unwrap();
         } else if piece_corrupt(data_block.piece_idx, &mut file_prov, &hashes).await {
-            println!("Data Collector :: piece corrupt -> {}", data_block.piece_idx);
+            warn!("Piece corrupt -> {}", data_block.piece_idx);
             {
                 let mut picker = picker.lock().await;
                 picker.reinsert_piece(data_block.piece_idx);
@@ -60,10 +61,9 @@ async fn run(deps: Arc<dyn TransferDeps>, mut rx: Receiver<DataBlock>) {
             let piece_idx = data_block.piece_idx.clone();
             tx.send(InternalEvent::BlockStored(data_block.to_block())).await.unwrap();
             tx.send(InternalEvent::PieceStored(piece_idx)).await.unwrap();
-            println!("Data Collector :: piece complete -> {}, {} out of {}", data_block.piece_idx, acquired_pieces, layout.pieces);
+            info!("Piece complete -> {}, {} out of {}", data_block.piece_idx, acquired_pieces, layout.pieces);
         }
         if acquired_pieces == layout.pieces {
-            println!("Data Collector :: download complete");
             tx.send(InternalEvent::DownloadComplete).await.unwrap();
             break;
         }
