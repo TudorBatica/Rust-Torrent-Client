@@ -8,11 +8,19 @@ use rust_torrent_client::core_models::entities::{TorrentLayout};
 
 #[tokio::main]
 async fn main() {
+    // Retrieve .torrent file path arg
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() < 2 {
+        eprintln!("Usage: {} <path-to-torrent-file>", args[0]);
+        std::process::exit(1);
+    }
+    let torrent_file_path = &args[1];
+
     // initialize client
     let config = Config::init();
 
     // parse metadata and prepare output files
-    let torrent = torrent_parser::parse_torrent("test_resources/debian-12.0.0-amd64-netinst.iso.torrent").unwrap();
+    let torrent = torrent_parser::parse_torrent(torrent_file_path).unwrap();
     let layout = TorrentLayout::from_torrent(&torrent);
 
     create_output_files(&layout);
