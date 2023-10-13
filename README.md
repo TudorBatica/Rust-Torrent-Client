@@ -4,7 +4,7 @@ This repository was built for educational purposes, for myself and anyone else w
 It aims at providing an easy-to-follow overview of the BitTorrent protocol and a PoC implementation of a BitTorrent
 client built using async Rust.  
 For a list of features not yet supported by the client, but that might get implemented in the future, check out
-the [link here issues page].
+the [issues page](https://github.com/TudorBatica/TorrentRS/issues).
 
 ## Table of contents
 
