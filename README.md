@@ -42,7 +42,10 @@ to and from other peers.
 Before diving into metafiles, it is important to understand that, when a file is shared through BitTorrent,
 it gets divided in equal parts called _pieces_.
 
-<img src="documentation/pieces_division.png" alt="Pieces Division" style="max-width: 500px; max-height: 300px;">
+<div style="text-align:center">
+   <img src="documentation/pieces_division.png" alt="Pieces Division" style="max-width: 500px; max-height: 300px;">
+   <p style="text-align:center; font-style: italic;">Division into pieces for a file shared using BitTorrent</p>
+</div>
 
 To share a file with BitTorrent, a `.torrent` metafile is created, containing various information about the shared data,
 such as:
@@ -65,7 +68,7 @@ In the bencode format, there are 4 types of data, as illustrated in the table be
 | Dictionaries | `d<contents>e`    | `d1:ai2e1:b3:sthe` | `{"a": 2, "b": "sth"}`   |
 
 ### 1.3. Trackers
-Trackers are the only central authorities in this protocol, making BitTorrent v1.0 a hybrid P2P system. Simply put, trackers
+Trackers are the only central entities in this protocol, making BitTorrent v1.0 a hybrid P2P system. Simply put, trackers
 are HTTP services which keep track of who is currently transferring the shared files.  
 BitTorrent clients contact the tracker:
 - when trying to enter the network, receiving back a list of peers to exchange data with
@@ -86,7 +89,10 @@ The handshake is performed by both peers sending each other a message which cont
 a peer id, and the string identifier of the BitTorrent protocol.  
 Once the handshake is complete, the client can start exchanging data with the peer.
 
-<img src="documentation/entering_the_network.gif" alt="Entering the network" style="max-width: 500px; max-height: 350px;">
+<div style="text-align:center">
+   <img src="documentation/entering_the_network.gif" alt="Entering the network" style="max-width: 500px; max-height: 350px;">
+   <p style="text-align:center; font-style: italic;">The procedure used for entering the BitTorrent network</p>
+</div>
 
 ### 1.5. Types of peers
 
@@ -127,7 +133,7 @@ It is very compact, and it represents each piece using a single bit:
 represents the piece with the index 0.  
 
 For example, let's consider a torrent with 5 pieces. Since computers work with bytes, not bits, the bitfield will have 
-8 bits, and the first 5 will represent the owned pieces. If a peer sends this: 10011000, we can say that the peer owns
+8 bits, and the first 5 will represent the owned pieces. If a peer sends this: `10011000`, we can say that the peer owns
 pieces 0, 3 and 4, and is missing pieces 1 and 2.  
 
 The Bitfield message is the first message sent by the peers after the handshake is complete, and does not need to be sent 
@@ -167,7 +173,10 @@ This message is the response to the Request message, containing the requested bl
 **I. Cancel**  
 This message is used to cancel a Request message.
 
-<img src="documentation/data_exchange.gif" alt="Entering the network" style="max-width: 500px; max-height: 350px;">
+<div style="text-align:center">
+   <img src="documentation/data_exchange.gif" alt="Data exchange" style="max-width: 500px; max-height: 350px;">
+  <p style="text-align:center; font-style: italic;">Sample data exchange flow</p>
+</div>
 
 ### 1.8. Piece picking
 BitTorrent clients use different strategies to decide the order in which to download the missing pieces.  
@@ -177,14 +186,58 @@ a good idea because, if that peer leaves, the download cannot complete. Secondly
 the overall download speed of the swarm.
 
 ## 2. BitTorrent Client PoC with Async Rust
+The following sections document the Rust BitTorrent client in this repository.
 
 ### 2.1. Architecture
+This implementation uses [Tokio](https://tokio.rs/)-backed asynchronous tasks which communicate with each other using channels. 
+Channels are great at minimizing the need for sharing memory between tasks. In fact, this implementation uses just 
+one mutex-guarded shared resource.
 
-### 2.2. Choking mechanism implementation
+There are 5 types of tasks in the application:
 
-### 2.3. Piece picking implementation
+**Coordinator**: spawns all other tasks and receives output events from all tasks and broadcasts them other tasks which need them.  
+**P2P tasks**: connect to peers and exchange data with them.  
+**Data collection task**: takes the data downloaded by the p2p transfer tasks and assembles the downloaded file(s).  
+**Choking mechanism task**: decides what peers to choke/unchoke and when.  
+**Tracker updates task**: sends regular updates to the tracker.  
 
+The resource shared by the tasks is the piece picker, locked behind a mutex, to be safely used by the p2p tasks 
+and the data collector task.
 
+<div style="text-align:center">
+  <img src="documentation/client-architecture.png" alt="Architecture diagram" style="max-width: 500px; max-height: 350px;">
+  <p style="text-align:center; font-style: italic;">Architecture diagram for our client application</p>
+</div>
 
+### 2.2. Piece picking implementation
+The piece picker used by this client is inspired by the one described in [libtorrent.org's blog](https://blog.libtorrent.org/2011/11/writing-a-fast-piece-picker/).  
 
+In this application, everytime a P2P task wants to request more blocks to its peer, it will use the piece picker to 
+determine which blocks to pick.  
+This particular piece picker implementation is looking to:
+- prioritize rare pieces
+- prioritize piece completion 
+- minimize the number of blocks being requested by multiple P2P tasks
+
+To achieve these goals, the piece picker will assign each piece a score. 
+The score will act as an inverse priority, i.e. the lower the score, the higher the piece's priority.
+When a P2P task needs to pick some more blocks, the piece picker will locate the piece with the lowest score that is not owned
+by us, but that it is owned by the P2P task's peer.  
+
+For each piece, the piece picker keeps track of:
+- the blocks that have not been yet picked
+- the blocks that have been picked(and presumably requested by some P2P task), but not yet downloaded and stored on disk
+
+The rules by which the score varies are simple:
+- each piece starts with a base score of 1000; for now, the piece picker will only pick blocks that have not yet been picked for this piece
+- for every peer that owns a piece x, the score of the piece x increases with 1; this prioritizes rare pieces
+- when blocks are picked from the piece, the piece's score decreases by 1000; this prioritizes piece completion, preventing
+a situation where we download blocks from a lot of different pieces, without completing any piece
+- when all blocks have been picked for a piece(but not all of them have also been downloaded and stored on disk), the piece's score
+will increase by 5000; from this point forward, the piece picker will pick blocks that have already been picked by other 
+P2P tasks; by applying the +5000 penalty to the piece, it minimizes the number of times that this scenario will happen; it is 
+however important to keep the option to re-pick blocks, for the scenario in which we request a block to a peer and that 
+peer responds after a very long time or does not respond at all
+- when all blocks have been stored for a piece(i.e. when the piece is complete), the score increases by 50000; pieces 
+with this score are ignored
 
