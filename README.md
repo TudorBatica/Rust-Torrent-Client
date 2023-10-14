@@ -209,7 +209,7 @@ The resource shared by the tasks is the piece picker, locked behind a mutex, to 
 and the data collector task.
 
 <div style="text-align:center">
-  <img src="documentation/client-architecture.png" alt="Architecture diagram" style="max-width: 500px; max-height: 350px;">
+  <img src="documentation/arch.png" alt="Architecture diagram" style="max-width: 500px; max-height: 350px;">
   <p style="text-align:center; font-style: italic;">Architecture diagram for our client application</p>
 </div>
 
