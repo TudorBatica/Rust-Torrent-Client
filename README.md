@@ -34,7 +34,7 @@ and the [official](http://bittorrent.org/beps/bep_0003.html) BitTorrent v1.0 spe
 
 ### 1.1. BitTorrent's purpose
 
-Consider the scenario in which a large file has to be shared to a lot of people.
+Consider the scenario in which a large file has to be shared with a lot of people.
 A common approach would be set up a server which has the entire file and have all the people
 download the file from it. This would put a lot of pressure on your server.  
 BitTorrent aims to solve this issue, by using a peer-to-peer approach. In this case, the need for a central server that
@@ -43,7 +43,7 @@ to and from other peers.
 
 ### 1.2. Metafiles
 
-Before diving into metafiles, it is important to understand that, when a file is shared through BitTorrent,
+Before delving into metafiles, it is important to understand that, when a file is shared through BitTorrent,
 it gets divided in equal parts called _pieces_.
 
 <div style="text-align:center">
@@ -73,7 +73,7 @@ In the bencode format, there are 4 types of data, as illustrated in the table be
 
 ### 1.3. Trackers
 Trackers are the only central entities in this protocol, making BitTorrent v1.0 a hybrid P2P system. Simply put, trackers
-are HTTP services which keep track of who is currently transferring the shared files.  
+are HTTP services that keep track of who is currently transferring the shared files.  
 BitTorrent clients contact the tracker:
 - when trying to enter the network, receiving back a list of peers to exchange data with
 - regularly, during the download, at every "interval" seconds, where "interval" is specified by the tracker on the first request;
@@ -105,7 +105,7 @@ The BitTorrent network is made up of:
 - leechers = peers which may have some pieces of the torrent; they download and maybe upload from/to others
 
 ### 1.6. The choking mechanism
-In a BitTorrent network, if peer A is choking peer B, it means that peer A is refusing to upload data to peer B.  
+In a BitTorrent network, when peer A chokes peer B, it means that peer A is refusing to upload data to peer B. 
 If peer A is not choking peer B, then peer A is willing to upload data that peer B requests.  
 
 The choking mechanism exists for a few different reasons.  
