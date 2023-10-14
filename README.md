@@ -6,6 +6,11 @@ client built using async Rust.
 For a list of features not yet supported by the client, but that might get implemented in the future, check out
 the [issues page](https://github.com/TudorBatica/TorrentRS/issues).
 
+<div style="text-align:center">
+   <img src="documentation/torrent-demo.gif" alt="Client demo" style="max-width: 500px; max-height: 300px;">
+   <p style="text-align:center; font-style: italic;">Downloading a Debian ISO(738 MiB) with the PoC Rust client</p>
+</div>
+
 ## Table of contents
 
 1. [The BitTorrent protocol](#1-the-bittorrent-protocol)  
