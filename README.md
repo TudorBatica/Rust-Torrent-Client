@@ -24,8 +24,7 @@ the [issues page](https://github.com/TudorBatica/TorrentRS/issues).
    1.8. [Piece picking](#18-piece-picking)
 2. [BitTorrent Client PoC with Async Rust](#2-bittorrent-client-poc-with-async-rust)  
    2.1. [Architecture](#21-architecture)  
-   2.2. [Choking mechanism implementation](#22-choking-mechanism-implementation)  
-   2.3. [Piece picker implementation](#23-piece-picking-implementation)
+   2.2. [Piece picking implementation](#22-piece-picking-implementation)
 
 ## 1. The BitTorrent protocol
 
