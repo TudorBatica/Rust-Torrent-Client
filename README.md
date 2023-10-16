@@ -35,8 +35,8 @@ and the [official](http://bittorrent.org/beps/bep_0003.html) BitTorrent v1.0 spe
 ### 1.1. BitTorrent's purpose
 
 Consider the scenario in which a large file has to be shared with a lot of people.
-A common approach would be set up a server which has the entire file and have all the people
-download the file from it. This would put a lot of pressure on your server.  
+A common approach would be to set up a server which has the entire file and have all the people
+download it from there. This would put a lot of pressure on your server.  
 BitTorrent aims to solve this issue, by using a peer-to-peer approach. In this case, the need for a central server that
 uploads all the data is removed, because everyone engaged in the transfer will be able to both upload and download data
 to and from other peers.
@@ -114,7 +114,7 @@ First, if you communicate with a lot of peers(say 50+, which is common for popul
 all your bandwidth.  
 
 Then, there's the matter of equitable exchanges.   
-If you are a leecher, you can choose to unchoke only the peers that are also uploading data back to you. 
+If you are a leecher, you can choose to unchoke only the peers that are uploading data to you. 
 If there are many peers doing this, you can unchoke only the ones that give you the best download rate.  
 If you are a seeder, you can unchoke only the peers which give you the best upload rate. This way, you ensure 
 that pieces get downloaded by the peers as fast as possible, thus making the entire swarm get the data faster.  
@@ -124,7 +124,7 @@ By following the rather simple rule of leechers unchoking only the peers who giv
 free riders(i.e. peers who only download, without uploading anything) get automatically penalized.  
 
 There is one final concept which ties the entire choking mechanism together, and that is the optimistic unchoke. 
-At regular intervals, BitTorrent clients unchoke a peer at random. This can help the client find faster connections, and 
+At regular intervals, BitTorrent clients unchoke a random peer. This can help the client find faster connections, and 
 it is also very helpful for peers who just joined the network and have no pieces.
 
 ### 1.7. Exchanging data in the BitTorrent network
@@ -132,12 +132,12 @@ The peers communicate with each other via the following set of specific messages
 
 **A. Bitfield**  
 A bitfield is a data structure which represents the pieces owned by a peer.  
-It is very compact, and it represents each piece using a single bit: 
+It is very compact because it represents each piece using a single bit: 
 0, if the piece is _not_ owned by the peer, and 1 if the piece is owned by the peer. The high bit 
-represents the piece with the index 0.  
+represents the piece with index 0.  
 
 For example, let's consider a torrent with 5 pieces. Since computers work with bytes, not bits, the bitfield will have 
-8 bits, and the first 5 will represent the owned pieces. If a peer sends this: `10011000`, we can say that the peer owns
+8 bits, and the first 5 will represent the torrent's pieces. If a peer sends this: `10011000`, we can say that the peer owns
 pieces 0, 3 and 4, and is missing pieces 1 and 2.  
 
 The Bitfield message is the first message sent by the peers after the handshake is complete, and does not need to be sent 
@@ -157,7 +157,7 @@ The opposite of the Interested message, sent when the client is no longer intere
 **E. Unchoke**  
 When a client receives this message from a peer, it means that the peer is no longer choking the client.
 
-**F. Choke**
+**F. Choke**  
 When a client receives this message from a peer, it means that the peer is now choking the client.
 
 **G. Request**  
@@ -185,7 +185,7 @@ This message is used to cancel a Request message.
 ### 1.8. Piece picking
 BitTorrent clients use different strategies to decide the order in which to download the missing pieces.  
 A good and common strategy is to pick the rarest pieces in the swarm first. If a client is exchanging data with 
-multiple peers, and only of those peers has piece 5, it is a good idea to download that piece first. Firstly, it is 
+multiple peers, and only one of those peers has piece 5, it is a good idea to download that piece first. Firstly, it is 
 a good idea because, if that peer leaves, the download cannot complete. Secondly, because rare pieces are not good for 
 the overall download speed of the swarm.
 
@@ -199,7 +199,7 @@ one mutex-guarded shared resource.
 
 There are 5 types of tasks in the application:
 
-**Coordinator**: spawns all other tasks and receives output events from all tasks and broadcasts them other tasks which need them.  
+**Coordinator**: spawns all other tasks; helps tasks communicate with each other by broadcasting their events.  
 **P2P tasks**: connect to peers and exchange data with them.  
 **Data collection task**: takes the data downloaded by the p2p transfer tasks and assembles the downloaded file(s).  
 **Choking mechanism task**: decides what peers to choke/unchoke and when.  
@@ -217,7 +217,7 @@ and the data collector task.
 The piece picker used by this client is inspired by the one described in [libtorrent.org's blog](https://blog.libtorrent.org/2011/11/writing-a-fast-piece-picker/).  
 
 In this application, everytime a P2P task wants to request more blocks to its peer, it will use the piece picker to 
-determine which blocks to pick.  
+determine which blocks to request.  
 This particular piece picker implementation is looking to:
 - prioritize rare pieces
 - prioritize piece completion 
@@ -233,15 +233,19 @@ For each piece, the piece picker keeps track of:
 - the blocks that have been picked(and presumably requested by some P2P task), but not yet downloaded and stored on disk
 
 The rules by which the score varies are simple:
-- each piece starts with a base score of 1000; for now, the piece picker will only pick blocks that have not yet been picked for this piece
+- each piece starts with a base score of 1000
 - for every peer that owns a piece x, the score of the piece x increases with 1; this prioritizes rare pieces
 - when blocks are picked from the piece, the piece's score decreases by 1000; this prioritizes piece completion, preventing
 a situation where we download blocks from a lot of different pieces, without completing any piece
 - when all blocks have been picked for a piece(but not all of them have also been downloaded and stored on disk), the piece's score
-will increase by 5000; from this point forward, the piece picker will pick blocks that have already been picked by other 
-P2P tasks; by applying the +5000 penalty to the piece, it minimizes the number of times that this scenario will happen; it is 
-however important to keep the option to re-pick blocks, for the scenario in which we request a block to a peer and that 
-peer responds after a very long time or does not respond at all
-- when all blocks have been stored for a piece(i.e. when the piece is complete), the score increases by 50000; pieces 
-with this score are ignored
+will increase by 5000
+- when all blocks have been stored for a piece(i.e. when the piece is complete), the score increases by 50000
+
+Using this score, we end up with a few categories of pieces:
+- pieces with 0 < score < 1000: pieces with some(but not all) blocks picked; these are the most important; the piece picker only picks unpicked blocks for these pieces
+- pieces with 1000 < score < 5000: pieces with no blocks picked
+- pieces with 5000 < score < 50000: pieces with all blocks picked(and presumably requested from peers), but not yet downloaded and stored on disk; for these pieces, the piece
+picker will pick already picked blocks; this mechanism exists to prevent a scenario in which we request a block from a peer and that peer stops responding; also, in order to
+prevent a lot of blocks being downloaded more than once, the picker will pick only one block at a time from pieces in this category, no matter how many blocks the caller asks for
+- pieces with score > 50000: pieces with all blocks stored; the picker ignores these pieces
 
